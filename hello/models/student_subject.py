@@ -11,7 +11,7 @@ class StudentSubject(models.Model):
 
     student = models.ForeignKey('Student', on_delete=models.CASCADE)
     subject = models.ForeignKey('Subject', on_delete=models.CASCADE)
-    interest = models.IntegerField(choices=INTEREST_CHOICES)
+    interest = models.IntegerField(choices=INTEREST_CHOICES, null=True, blank=True)
 
     class Meta:
         unique_together = ('student', 'subject')

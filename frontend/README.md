@@ -6,18 +6,25 @@
 
 ## Getting Started
 
-1. Install dependencies:,
+1. Go to frontend folder:
+
+```powershell
+cd frontend
+```
+
+2. Install dependencies:,
+
    ```
    npm install
    ```
 
-2. Run development server:
+3. Run development server:
 
    ```
    npm run dev
    ```
 
-3. Open http://localhost:5173 in your browser
+4. Open http://localhost:5173 in your browser
 
 ## Available Scripts
 
