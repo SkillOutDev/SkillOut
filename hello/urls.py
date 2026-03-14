@@ -7,4 +7,9 @@ from hello import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("add-student/", views.add_student, name="add_student"),
+    path("add-category/", views.add_category, name="add_category"),
+    path("add-subject/", views.add_subject, name="add_subject"),
+    path("add-interest/", views.add_subject_interest, name="add_subject_interest"),
+    path("student/<int:student_id>/subjects/", views.get_student_subjects, name="get_student_subjects"),
 ]
