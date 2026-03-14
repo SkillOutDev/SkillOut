@@ -50,14 +50,20 @@
         </div>
 
         <div class="button-wrapper">
-          <button type="submit" :disabled="fromSemester > toSemester">Submit</button>
+          <button type="submit" :disabled="fromSemester > toSemester || loading">
+            {{ loading ? "Submitting..." : "Submit" }}
+          </button>
         </div>
       </form>
 
       <p v-if="submittedInfo" class="result">
         Submitted: {{ submittedInfo.url }} <br>
         <small>(Semesters: {{ submittedInfo.from }} - {{ submittedInfo.to }})</small>
+        <br>
+        <small v-if="submittedInfo.file">Saved to: {{ submittedInfo.file }}</small>
       </p>
+
+      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
     </section>
   </main>
 </template>
@@ -71,16 +77,45 @@ export default {
       fromSemester: 1,
       toSemester: 1,
       submittedInfo: null,
+      loading: false,
+      errorMessage: "",
     };
   },
   methods: {
-    handleSubmit() {
+    async handleSubmit() {
       if (this.fromSemester <= this.toSemester) {
-        this.submittedInfo = {
-          url: this.url,
-          from: this.fromSemester,
-          to: this.toSemester,
-        };
+        this.errorMessage = "";
+        this.loading = true;
+
+        try {
+          const response = await fetch("/api/scrape-text/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              url: this.url,
+              fromSemester: this.fromSemester,
+              toSemester: this.toSemester,
+            }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Request failed");
+          }
+
+          this.submittedInfo = {
+            url: this.url,
+            from: this.fromSemester,
+            to: this.toSemester,
+            file: data.file,
+          };
+        } catch (error) {
+          this.errorMessage = error.message || "Failed to submit URL.";
+        } finally {
+          this.loading = false;
+        }
       }
     },
   },

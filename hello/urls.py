@@ -12,4 +12,5 @@ urlpatterns = [
     path("add-subject/", views.add_subject, name="add_subject"),
     path("add-interest/", views.add_subject_interest, name="add_subject_interest"),
     path("student/<int:student_id>/subjects/", views.get_student_subjects, name="get_student_subjects"),
+    path("api/scrape-text/", views.scrape_text, name="scrape-text"),
 ]
