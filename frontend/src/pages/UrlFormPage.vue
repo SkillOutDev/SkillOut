@@ -105,6 +105,8 @@ export default {
             throw new Error(data.error || "Request failed");
           }
 
+          this.$router.push("/subjects");
+          
           this.submittedInfo = {
             url: this.url,
             from: this.fromSemester,

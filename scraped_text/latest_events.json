@@ -1,0 +1,129 @@
+{
+  "url": "https://www.kaveikti.lt/renginiai/",
+  "source": "kaveikti",
+  "city": "",
+  "events": [
+    {
+      "event_id": 63,
+      "name": "Ričardas Berankis prieš Jo-Wilfried Tsongą",
+      "date": "2023-03-28",
+      "time": "16:00",
+      "place": "SEB arena, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Sportas"
+      ],
+      "short_description": "Event: Ričardas Berankis prieš Jo-Wilfried Tsongą",
+      "source_url": "https://www.kaveikti.lt/renginiai/vilniuje/"
+    },
+    {
+      "event_id": 64,
+      "name": "2 METRAI: Deivis Norvilas ir Rafailas Karpis",
+      "date": "2026-03-21",
+      "time": "18:00",
+      "place": "VDU didžioji salė, Kaunas",
+      "price": "0.00",
+      "categories": [
+        "Koncertai"
+      ],
+      "short_description": "Su Benjaminu Gorbulskiu GYVENTI NUOSTABU!",
+      "source_url": "https://www.kaveikti.lt/renginiai/kaune/"
+    },
+    {
+      "event_id": 65,
+      "name": "Natalija Bunkė su gyvo garso grupe",
+      "date": "2026-04-09",
+      "time": "18:00",
+      "place": "Koncertų salė „Saulė“, Šiauliai",
+      "price": "0.00",
+      "categories": [
+        "Music",
+        "Concerts"
+      ],
+      "short_description": "Natalija Bunkė with a live sound group",
+      "source_url": "https://www.kaveikti.lt/renginiai/siauliuose/"
+    },
+    {
+      "event_id": 66,
+      "name": "Spektaklis ''Pelenė''!",
+      "date": "2026-03-21",
+      "time": "12:00",
+      "place": "Alytaus kultūros centras, Alytus",
+      "price": "0.00",
+      "categories": [
+        "Music",
+        "Theater"
+      ],
+      "short_description": "Event: Spektaklis ''Pelenė''!",
+      "source_url": "https://www.kaveikti.lt/renginiai/alytuje/"
+    },
+    {
+      "event_id": 67,
+      "name": "Premjera! Provokuojanti komedija \"Sumauta dovana\"",
+      "date": "2023-03-31",
+      "time": "18:00",
+      "place": "Marijampolės dramos teatras, Marijampolė",
+      "price": "0.00",
+      "categories": [
+        "Music",
+        "Spektakliai"
+      ],
+      "short_description": "Premjera! Provokuojanti komedija \"Sumauta dovana\"",
+      "source_url": "https://www.kaveikti.lt/renginiai/marijampoleje/"
+    },
+    {
+      "event_id": 68,
+      "name": "Rahel Talts Quartet džiazo koncertas",
+      "date": "2026-03-20",
+      "time": "18:00",
+      "place": "Daugiakultūris centras, Kėdainiai",
+      "price": "0.00",
+      "categories": [
+        "Music",
+        "Koncertai"
+      ],
+      "short_description": "Džiazo pianisto ir kompozitoriaus Domo Žeromsko ir grupės koncertas.",
+      "source_url": "https://www.kaveikti.lt/renginiai/kedainiuose/"
+    },
+    {
+      "event_id": 69,
+      "name": "Žaisminga komedija „Aukštakulniais per santuoką“",
+      "date": "2023-04-18",
+      "time": "18:00",
+      "place": "Palangos koncertų salė, Palanga",
+      "price": "0.00",
+      "categories": [
+        "Koncertai",
+        "Spektakliai"
+      ],
+      "short_description": "Orientacinis žaidimas su gidu - JODO BOMBA",
+      "source_url": "https://www.kaveikti.lt/renginiai/palangoje/"
+    }
+  ],
+  "failed": [
+    {
+      "source_url": "https://www.kaveikti.lt/renginiai/panevezyje/",
+      "error": "Could not parse model JSON output."
+    },
+    {
+      "source_url": "https://www.kaveikti.lt/renginiai/mazeikiuose/",
+      "error": "Could not parse model JSON output."
+    },
+    {
+      "name": "Spektaklis \"Prie dangaus vartų\"",
+      "error": "Missing or invalid required fields (name, date, time, place, price).",
+      "raw": {
+        "name": "Spektaklis \"Prie dangaus vartų\"",
+        "date": "Antradienį",
+        "time": "18:00",
+        "place": "Klaipėdos koncertų salė, Klaipėda",
+        "price": "0",
+        "categories": [
+          "Spektakliai"
+        ],
+        "short_description": "Antradienį 18:00 Koncertai star_rate Spektaklis \"Prie dangaus vartų\"",
+        "source_url": "https://www.kaveikti.lt/renginiai/klaipedoje/"
+      }
+    }
+  ]
+}

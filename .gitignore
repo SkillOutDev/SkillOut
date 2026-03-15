@@ -69,3 +69,13 @@ htmlcov/
 .env
 .env.local
 .env.*.local
+frontend/.vite/deps/_metadata.json
+frontend/.vite/deps/chunk-RZZXYUDO.js
+frontend/.vite/deps/chunk-RZZXYUDO.js.map
+frontend/.vite/deps/package.json
+frontend/.vite/deps/vue-router.js
+frontend/.vite/deps/vue-router.js.map
+frontend/.vite/deps/vue.js
+frontend/.vite/deps/vue.js.map
+scraped_text/latest_scrape.txt
+scraped_text/latest_subjects.json
