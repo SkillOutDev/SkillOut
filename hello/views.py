@@ -35,6 +35,17 @@ class AddCategoryRequestSerializer(serializers.Serializer):
     name = serializers.CharField()
 
 
+class AddEventRequestSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    date = serializers.DateField()
+    time = serializers.TimeField(required=False, allow_null=True)
+    place = serializers.CharField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, default=0)
+    short_description = serializers.CharField(required=False, allow_blank=True, default="")
+    categories = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+    source_url = serializers.URLField(required=False, allow_null=True, allow_blank=True)
+
+
 class AddSubjectRequestSerializer(serializers.Serializer):
     name = serializers.CharField()
     category_id = serializers.IntegerField(required=False, allow_null=True)
@@ -67,6 +78,13 @@ class ScrapeImportAssignRequestSerializer(serializers.Serializer):
     fromSemester = serializers.IntegerField(required=False)
     toSemester = serializers.IntegerField(required=False)
     model = serializers.CharField(required=False)
+
+
+class ScrapeEventsRequestSerializer(serializers.Serializer):
+    url = serializers.CharField()
+    model = serializers.CharField(required=False)
+    max_events = serializers.IntegerField(required=False)
+    city = serializers.CharField(required=False, allow_blank=True)
 
 
 class SubjectItemSerializer(serializers.Serializer):
@@ -1182,15 +1200,13 @@ def scrape_import_and_assign_subjects(request):
         status=status.HTTP_200_OK,
     )
 
-@csrf_exempt
+@extend_schema(
+    request=ScrapeEventsRequestSerializer,
+    responses={200: serializers.DictField(), 400: serializers.DictField(), 500: serializers.DictField()},
+)
+@api_view(["POST"])
 def scrape_events(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "Only POST is allowed."}, status=405)
-
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    payload = request.data if isinstance(request.data, dict) else {}
 
     url = (payload.get("url") or "").strip()
     model_name = (payload.get("model") or "llama3").strip()
@@ -1200,13 +1216,13 @@ def scrape_events(request):
     try:
         max_events = int(max_events)
     except (TypeError, ValueError):
-        return JsonResponse({"error": "max_events must be a number."}, status=400)
+        return Response({"error": "max_events must be a number."}, status=status.HTTP_400_BAD_REQUEST)
     if max_events < 1:
-        return JsonResponse({"error": "max_events must be at least 1."}, status=400)
+        return Response({"error": "max_events must be at least 1."}, status=status.HTTP_400_BAD_REQUEST)
     if not url:
-        return JsonResponse({"error": "Field 'url' is required."}, status=400)
+        return Response({"error": "Field 'url' is required."}, status=status.HTTP_400_BAD_REQUEST)
     if not (url.startswith("http://") or url.startswith("https://")):
-        return JsonResponse({"error": "URL must start with http:// or https://."}, status=400)
+        return Response({"error": "URL must start with http:// or https://."}, status=status.HTTP_400_BAD_REQUEST)
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -1215,13 +1231,13 @@ def scrape_events(request):
             response.raise_for_status()
             break
         except requests.HTTPError as e:
-            return JsonResponse({"error": f"HTTP error: {e.response.status_code}"}, status=400)
+            return Response({"error": f"HTTP error: {e.response.status_code}"}, status=status.HTTP_400_BAD_REQUEST)
         except (requests.Timeout, requests.ConnectionError) as e:
             if attempt == max_retries - 1:
-                return JsonResponse({"error": f"Failed after {max_retries} attempts: {e}"}, status=400)
+                return Response({"error": f"Failed after {max_retries} attempts: {e}"}, status=status.HTTP_400_BAD_REQUEST)
             time.sleep(1)
         except requests.RequestException as e:
-            return JsonResponse({"error": f"Request failed: {e}"}, status=400)
+            return Response({"error": f"Request failed: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -1231,9 +1247,9 @@ def scrape_events(request):
     try:
         import ollama
     except ImportError:
-        return JsonResponse(
+        return Response(
             {"error": "Ollama Python package is not installed. Install it with: pip install ollama"},
-            status=500,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
     parsed = {"events": []}
@@ -1272,9 +1288,9 @@ def scrape_events(request):
             event_links = _load_saved_event_urls(source=source, city=city, max_events=max_events)
 
         if not event_links:
-            return JsonResponse(
+            return Response(
                 {"error": f"No event links found for source '{source}' and no saved links are available."},
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         for detail_url in event_links:
@@ -1324,11 +1340,11 @@ def scrape_events(request):
                 messages=[{"role": "user", "content": prompt}],
             )
         except Exception as exc:
-            return JsonResponse({"error": f"Ollama request failed: {exc}"}, status=500)
+            return Response({"error": f"Ollama request failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         parsed = _parse_json_from_model_output(ollama_response.get("message", {}).get("content", ""))
         if not isinstance(parsed, dict) or not isinstance(parsed.get("events"), list):
-            return JsonResponse({"error": "Could not parse events JSON from model output."}, status=500)
+            return Response({"error": "Could not parse events JSON from model output."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     created_events = 0
     updated_events = 0
@@ -1369,11 +1385,12 @@ def scrape_events(request):
         event, created = Event.objects.update_or_create(
             name=name,
             date=date_value,
-            time=time_value,
             defaults={
+                "time": time_value,
                 "place": place,
                 "price": price_value,
                 "short_description": short_description or f"Event: {name}",
+                "source_url": item.get("source_url") or "",
             },
         )
 
@@ -1403,7 +1420,7 @@ def scrape_events(request):
                 "price": str(event.price),
                 "categories": [c.name for c in event.categories.all()],
                 "short_description": event.short_description,
-                "source_url": item.get("source_url"),
+                "source_url": event.source_url,
             }
         )
 
@@ -1420,7 +1437,7 @@ def scrape_events(request):
         encoding="utf-8",
     )
 
-    return JsonResponse(
+    return Response(
         {
             "message": "Event scrape and extraction completed.",
             "json_file": str(json_output_file.relative_to(settings.BASE_DIR)),
@@ -1429,7 +1446,8 @@ def scrape_events(request):
             "failed_count": len(failed_events),
             "events": saved_events,
             "failed": failed_events,
-        }
+        },
+        status=status.HTTP_200_OK,
     )
 
 
@@ -1464,4 +1482,138 @@ def get_latest_events(request):
             "searched_at": str(file_path),
         },
         status=404,
+    )
+
+
+@api_view(["GET"])
+def get_events(request):
+    """Return all events stored in the database, newest first."""
+    events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+
+    data = [
+        {
+            "event_id": e.id,
+            "name": e.name,
+            "date": str(e.date),
+            "time": e.time.strftime("%H:%M"),
+            "place": e.place,
+            "price": str(e.price),
+            "categories": [c.name for c in e.categories.all()],
+            "short_description": e.short_description,
+            "source_url": e.source_url,
+        }
+        for e in events
+    ]
+
+    return Response({"total": len(data), "events": data}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    responses={200: serializers.DictField()},
+)
+@api_view(["DELETE"])
+def purge_ended_events(request):
+    """Delete all events whose date+time is in the past."""
+    now = timezone.now()
+    today = now.date()
+    current_time = now.time()
+
+    # Events on a past date, or today but the time has already passed
+    ended = Event.objects.filter(
+        date__lt=today
+    ) | Event.objects.filter(
+        date=today, time__lt=current_time
+    )
+
+    deleted_events = [
+        {"event_id": e.id, "name": e.name, "date": str(e.date), "time": e.time.strftime("%H:%M")}
+        for e in ended
+    ]
+    count = ended.count()
+    ended.delete()
+
+    return Response(
+        {
+            "message": f"{count} ended event(s) removed.",
+            "deleted_count": count,
+            "deleted_events": deleted_events,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@extend_schema(
+    request=AddEventRequestSerializer,
+    responses={201: serializers.DictField(), 200: serializers.DictField(), 400: serializers.DictField()},
+)
+@api_view(["POST"])
+def add_event(request):
+    data = request.data
+    name = str(data.get("name") or "").strip()
+    date_raw = data.get("date")
+    time_raw = data.get("time")
+    place = str(data.get("place") or "").strip()
+    price_raw = data.get("price", 0)
+    short_description = str(data.get("short_description") or "").strip()
+    category_names = data.get("categories") or []
+    source_url = str(data.get("source_url") or "").strip() or None
+
+    if not name:
+        return Response({"error": "'name' is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if not date_raw:
+        return Response({"error": "'date' is required (YYYY-MM-DD)."}, status=status.HTTP_400_BAD_REQUEST)
+    if not place:
+        return Response({"error": "'place' is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    date_value = _parse_event_date(date_raw)
+    if date_value is None:
+        return Response({"error": "Invalid 'date' format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+    time_value = _parse_event_time(time_raw) if time_raw else None
+    if time_value is None:
+        time_value = datetime.strptime("00:00", "%H:%M").time()
+
+    price_value = _parse_event_price(price_raw)
+    if price_value is None:
+        return Response({"error": "Invalid 'price' value."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not isinstance(category_names, list):
+        return Response({"error": "'categories' must be a list of strings."}, status=status.HTTP_400_BAD_REQUEST)
+
+    event, created = Event.objects.update_or_create(
+        name=name,
+        date=date_value,
+        defaults={
+            "time": time_value,
+            "place": place,
+            "price": price_value,
+            "short_description": short_description,
+            "source_url": source_url,
+        },
+    )
+
+    event_categories = []
+    for cat_name in category_names:
+        cat_name = str(cat_name).strip()
+        if cat_name:
+            category, _ = Category.objects.get_or_create(name=cat_name)
+            event_categories.append(category)
+    if event_categories:
+        event.categories.set(event_categories)
+
+    return Response(
+        {
+            "message": "Event created." if created else "Event updated.",
+            "event_id": event.id,
+            "name": event.name,
+            "date": str(event.date),
+            "time": event.time.strftime("%H:%M"),
+            "place": event.place,
+            "price": str(event.price),
+            "short_description": event.short_description,
+            "categories": [c.name for c in event.categories.all()],
+            "source_url": event.source_url,
+            "created": created,
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )

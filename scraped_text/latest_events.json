@@ -1,128 +1,138 @@
 {
-  "url": "https://www.kaveikti.lt/renginiai/",
-  "source": "kaveikti",
+  "url": "https://www.litexpo.lt/en/events/",
+  "source": "litexpo",
   "city": "",
   "events": [
     {
-      "event_id": 63,
-      "name": "Ričardas Berankis prieš Jo-Wilfried Tsongą",
-      "date": "2023-03-28",
-      "time": "16:00",
-      "place": "SEB arena, Vilnius",
-      "price": "0.00",
-      "categories": [
-        "Sportas"
-      ],
-      "short_description": "Event: Ričardas Berankis prieš Jo-Wilfried Tsongą",
-      "source_url": "https://www.kaveikti.lt/renginiai/vilniuje/"
-    },
-    {
-      "event_id": 64,
-      "name": "2 METRAI: Deivis Norvilas ir Rafailas Karpis",
-      "date": "2026-03-21",
-      "time": "18:00",
-      "place": "VDU didžioji salė, Kaunas",
-      "price": "0.00",
-      "categories": [
-        "Koncertai"
-      ],
-      "short_description": "Su Benjaminu Gorbulskiu GYVENTI NUOSTABU!",
-      "source_url": "https://www.kaveikti.lt/renginiai/kaune/"
-    },
-    {
-      "event_id": 65,
-      "name": "Natalija Bunkė su gyvo garso grupe",
-      "date": "2026-04-09",
-      "time": "18:00",
-      "place": "Koncertų salė „Saulė“, Šiauliai",
-      "price": "0.00",
-      "categories": [
-        "Music",
-        "Concerts"
-      ],
-      "short_description": "Natalija Bunkė with a live sound group",
-      "source_url": "https://www.kaveikti.lt/renginiai/siauliuose/"
-    },
-    {
-      "event_id": 66,
-      "name": "Spektaklis ''Pelenė''!",
-      "date": "2026-03-21",
-      "time": "12:00",
-      "place": "Alytaus kultūros centras, Alytus",
-      "price": "0.00",
-      "categories": [
-        "Music",
-        "Theater"
-      ],
-      "short_description": "Event: Spektaklis ''Pelenė''!",
-      "source_url": "https://www.kaveikti.lt/renginiai/alytuje/"
-    },
-    {
-      "event_id": 67,
-      "name": "Premjera! Provokuojanti komedija \"Sumauta dovana\"",
-      "date": "2023-03-31",
-      "time": "18:00",
-      "place": "Marijampolės dramos teatras, Marijampolė",
-      "price": "0.00",
-      "categories": [
-        "Music",
-        "Spektakliai"
-      ],
-      "short_description": "Premjera! Provokuojanti komedija \"Sumauta dovana\"",
-      "source_url": "https://www.kaveikti.lt/renginiai/marijampoleje/"
-    },
-    {
-      "event_id": 68,
-      "name": "Rahel Talts Quartet džiazo koncertas",
+      "event_id": 1,
+      "name": "Helso Electricity",
       "date": "2026-03-20",
-      "time": "18:00",
-      "place": "Daugiakultūris centras, Kėdainiai",
+      "time": "00:00",
+      "place": "Lithuanian Exhibition and Congress Centre LITEXPO, Vilnius",
       "price": "0.00",
       "categories": [
-        "Music",
-        "Koncertai"
+        "Engineering",
+        "Technology"
       ],
-      "short_description": "Džiazo pianisto ir kompozitoriaus Domo Žeromsko ir grupės koncertas.",
-      "source_url": "https://www.kaveikti.lt/renginiai/kedainiuose/"
+      "short_description": "International electrical engineering exhibition",
+      "source_url": "https://www.litexpo.lt/en/events/helso-electricity/"
     },
     {
-      "event_id": 69,
-      "name": "Žaisminga komedija „Aukštakulniais per santuoką“",
-      "date": "2023-04-18",
-      "time": "18:00",
-      "place": "Palangos koncertų salė, Palanga",
+      "event_id": 2,
+      "name": "BIM Forum 2026",
+      "date": "2026-04-16",
+      "time": "00:00",
+      "place": "Lithuanian exhibition and congress center LITEXPO, laisves pr. 5, Vilnius",
       "price": "0.00",
       "categories": [
-        "Koncertai",
-        "Spektakliai"
+        "Engineering",
+        "Technology",
+        "Construction"
       ],
-      "short_description": "Orientacinis žaidimas su gidu - JODO BOMBA",
-      "source_url": "https://www.kaveikti.lt/renginiai/palangoje/"
+      "short_description": "Practical BIM Application in Construction conference for construction industry professionals",
+      "source_url": "https://www.litexpo.lt/en/events/bim-forum-2026/"
+    },
+    {
+      "event_id": 3,
+      "name": "RESTA 2026",
+      "date": "2026-04-23",
+      "time": "00:00",
+      "place": "Lithuanian Exhibition and Congress Centre LITEXPO, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Engineering",
+        "Construction"
+      ],
+      "short_description": "The largest construction industry exhibition in the Baltics returns in 2026 with key industry topics such as sustainable building solutions, digital construction technologies, and professional training.",
+      "source_url": "https://www.litexpo.lt/en/events/resta-2026/"
+    },
+    {
+      "event_id": 4,
+      "name": "Gravity Paroda: Deborah De Luca",
+      "date": "2026-05-02",
+      "time": "20:00",
+      "place": "Lithuanian Exhibition and Congress Centre LITEXPO, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Technology",
+        "Music",
+        "Entertainment"
+      ],
+      "short_description": "A techno music event with Deborah De Luca",
+      "source_url": "https://www.litexpo.lt/en/events/gravity-paroda-deborah-de-luca/"
+    },
+    {
+      "event_id": 5,
+      "name": "VILNIUS AUTO SHOW 2026",
+      "date": "2026-05-08",
+      "time": "14:00",
+      "place": "Lithuanian Exhibition and Congress Centre LITEXPO, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Engineering",
+        "Entertainment",
+        "Automotive"
+      ],
+      "short_description": "The biggest auto-moto celebration in Lithuania, featuring cars, motorcycles, ATVs, and other motorized vehicles. Win a 2017 Dodge Charger!",
+      "source_url": "https://www.litexpo.lt/en/events/vilnius-auto-show-2026/"
+    },
+    {
+      "event_id": 6,
+      "name": "MOTIVATED @ WORK 2026",
+      "date": "2026-05-13",
+      "time": "00:00",
+      "place": "Lithuanian Exhibition and Congress Centre LITEXPO",
+      "price": "0.00",
+      "categories": [
+        "HR",
+        "Business"
+      ],
+      "short_description": "Practical conference and exhibition on employee motivation, development, and loyalty.",
+      "source_url": "https://www.litexpo.lt/en/events/motivated-work-2026/"
+    },
+    {
+      "event_id": 7,
+      "name": "Comic Con Baltics 2026",
+      "date": "2026-05-22",
+      "time": "10:00",
+      "place": "Lithuanian exhibition and congress center LITEXPO, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Entertainment",
+        "Gaming",
+        "Art"
+      ],
+      "short_description": "The biggest popular culture festival with Hollywood actors, Cosplay and K-Pop Dance performances, international gaming tournaments, and more.",
+      "source_url": "https://www.litexpo.lt/en/events/comic-con-baltics-2026/"
+    },
+    {
+      "event_id": 8,
+      "name": "ENGINUUM 2026",
+      "date": "2026-06-03",
+      "time": "10:00",
+      "place": "LITEXPO, Vilnius",
+      "price": "0.00",
+      "categories": [
+        "Engineering",
+        "Technology",
+        "Business"
+      ],
+      "short_description": "Event: ENGINUUM 2026",
+      "source_url": "https://www.litexpo.lt/en/events/enginuum-2026/"
     }
   ],
   "failed": [
     {
-      "source_url": "https://www.kaveikti.lt/renginiai/panevezyje/",
+      "source_url": "https://www.litexpo.lt/en/events/fair-sentimentai/",
       "error": "Could not parse model JSON output."
     },
     {
-      "source_url": "https://www.kaveikti.lt/renginiai/mazeikiuose/",
-      "error": "Could not parse model JSON output."
-    },
-    {
-      "name": "Spektaklis \"Prie dangaus vartų\"",
+      "name": "",
       "error": "Missing or invalid required fields (name, date, time, place, price).",
       "raw": {
-        "name": "Spektaklis \"Prie dangaus vartų\"",
-        "date": "Antradienį",
-        "time": "18:00",
-        "place": "Klaipėdos koncertų salė, Klaipėda",
-        "price": "0",
-        "categories": [
-          "Spektakliai"
-        ],
-        "short_description": "Antradienį 18:00 Koncertai star_rate Spektaklis \"Prie dangaus vartų\"",
-        "source_url": "https://www.kaveikti.lt/renginiai/klaipedoje/"
+        "event": "Dr. Marius Strioga - 'Immunity: Bad, Good, Innate?'",
+        "time": "13:30-13:45",
+        "source_url": "https://www.litexpo.lt/en/events/pelene-2026/"
       }
     }
   ]
