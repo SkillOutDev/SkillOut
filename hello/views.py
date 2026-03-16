@@ -96,6 +96,16 @@ class ScrapeEventsRequestSerializer(serializers.Serializer):
     city = serializers.CharField(required=False, allow_blank=True)
 
 
+class FilterEventsQuerySerializer(serializers.Serializer):
+    min_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    max_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    city = serializers.CharField(required=False, allow_blank=True)
+    start_time = serializers.TimeField(required=False)
+    end_time = serializers.TimeField(required=False)
+
+
 class SubjectItemSerializer(serializers.Serializer):
     subject_id = serializers.IntegerField()
     name = serializers.CharField()
@@ -1625,6 +1635,80 @@ def get_events(request):
             "source_url": e.source_url,
         }
         for e in events
+    ]
+
+    return Response({"total": len(data), "events": data}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    parameters=[FilterEventsQuerySerializer],
+    responses={200: serializers.DictField(), 400: serializers.DictField()},
+)
+@api_view(["GET"])
+def filter_events(request):
+    """Filter events by price range, date range, city, and time range."""
+    serializer = FilterEventsQuerySerializer(data=request.query_params)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    filters = serializer.validated_data
+
+    min_price = filters.get("min_price")
+    max_price = filters.get("max_price")
+    start_date = filters.get("start_date")
+    end_date = filters.get("end_date")
+    city = (filters.get("city") or "").strip()
+    start_time = filters.get("start_time")
+    end_time = filters.get("end_time")
+
+    if min_price is not None and max_price is not None and min_price > max_price:
+        return Response(
+            {"error": "min_price cannot be greater than max_price."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if start_date and end_date and start_date > end_date:
+        return Response(
+            {"error": "start_date cannot be greater than end_date."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if start_time and end_time and start_time > end_time:
+        return Response(
+            {"error": "start_time cannot be greater than end_time."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    events = Event.objects.prefetch_related("categories").order_by("date", "time")
+
+    if min_price is not None:
+        events = events.filter(price__gte=min_price)
+    if max_price is not None:
+        events = events.filter(price__lte=max_price)
+    if start_date is not None:
+        events = events.filter(date__gte=start_date)
+    if end_date is not None:
+        events = events.filter(date__lte=end_date)
+    if city:
+        events = events.filter(place__icontains=city)
+    if start_time is not None:
+        events = events.filter(time__gte=start_time)
+    if end_time is not None:
+        events = events.filter(time__lte=end_time)
+
+    data = [
+        {
+            "event_id": event.id,
+            "name": event.name,
+            "date": str(event.date),
+            "time": event.time.strftime("%H:%M"),
+            "place": event.place,
+            "price": str(event.price),
+            "categories": [category.name for category in event.categories.all()],
+            "short_description": event.short_description,
+            "source_url": event.source_url,
+        }
+        for event in events
     ]
 
     return Response({"total": len(data), "events": data}, status=status.HTTP_200_OK)

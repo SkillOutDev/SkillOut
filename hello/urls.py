@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/get-latest-subjects/', views.get_latest_subjects, name='get-latest-subjects'),
     path('api/get-latest-events/', views.get_latest_events, name='get-latest-events'),
     path('api/events/', views.get_events, name='get-events'),
+    path('api/events/filter/', views.filter_events, name='filter-events'),
     path('api/events/<int:event_id>/', views.get_event_by_id, name='get-event-by-id'),
     path('api/events/purge-ended/', views.purge_ended_events, name='purge-ended-events'),
     path('api/events/add/', views.add_event, name='add-event'),
