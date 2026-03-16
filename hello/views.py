@@ -56,6 +56,15 @@ class AddSubjectInterestRequestSerializer(serializers.Serializer):
     interest = serializers.IntegerField(min_value=1, max_value=5)
 
 
+class SubjectInterestUpdateItemSerializer(serializers.Serializer):
+    subject_id = serializers.IntegerField()
+    interest = serializers.IntegerField(min_value=1, max_value=5)
+
+
+class BulkUpdateSubjectInterestRequestSerializer(serializers.Serializer):
+    subjects = SubjectInterestUpdateItemSerializer(many=True)
+
+
 class GetStudentSubjectsPathSerializer(serializers.Serializer):
     student_id = serializers.IntegerField()
 
@@ -703,6 +712,119 @@ def add_subject_interest(request):
             "created": created,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+@extend_schema(
+    request=BulkUpdateSubjectInterestRequestSerializer,
+    responses={200: serializers.DictField(), 400: serializers.DictField(), 404: serializers.DictField()},
+)
+@api_view(["PUT"])
+def update_student_subject_interests(request):
+    data = request.data if isinstance(request.data, dict) else {}
+    items = data.get("subjects")
+
+    if not isinstance(items, list) or not items:
+        return Response(
+            {"error": "Field 'subjects' is required and must be a non-empty list."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        student = Student.objects.get(id=DEFAULT_STUDENT_ID)
+    except Student.DoesNotExist:
+        return Response(
+            {"error": f"Hardcoded student id {DEFAULT_STUDENT_ID} not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    updated = []
+    failed = []
+
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            failed.append({"index": idx, "error": "Each subjects item must be an object."})
+            continue
+
+        subject_id = item.get("subject_id")
+        interest = item.get("interest")
+
+        if subject_id is None or interest is None:
+            failed.append(
+                {
+                    "index": idx,
+                    "subject_id": subject_id,
+                    "error": "subject_id and interest are required",
+                }
+            )
+            continue
+
+        try:
+            interest = int(interest)
+        except (TypeError, ValueError):
+            failed.append(
+                {
+                    "index": idx,
+                    "subject_id": subject_id,
+                    "error": "Interest must be a number",
+                }
+            )
+            continue
+
+        if interest not in [1, 2, 3, 4, 5]:
+            failed.append(
+                {
+                    "index": idx,
+                    "subject_id": subject_id,
+                    "error": "Interest must be between 1 and 5",
+                }
+            )
+            continue
+
+        try:
+            subject = Subject.objects.get(id=subject_id)
+        except Subject.DoesNotExist:
+            failed.append(
+                {
+                    "index": idx,
+                    "subject_id": subject_id,
+                    "error": "Subject not found",
+                }
+            )
+            continue
+
+        try:
+            student_subject = StudentSubject.objects.get(student=student, subject=subject)
+        except StudentSubject.DoesNotExist:
+            failed.append(
+                {
+                    "index": idx,
+                    "subject_id": subject_id,
+                    "error": "Student-subject relation not found",
+                }
+            )
+            continue
+
+        student_subject.interest = interest
+        student_subject.save(update_fields=["interest"])
+        updated.append(
+            {
+                "subject_id": subject.id,
+                "subject_name": subject.name,
+                "interest": interest,
+            }
+        )
+
+    return Response(
+        {
+            "message": "Bulk update completed.",
+            "student_id": student.id,
+            "updated_count": len(updated),
+            "failed_count": len(failed),
+            "updated": updated,
+            "failed": failed,
+        },
+        status=status.HTTP_200_OK,
     )
 
 @extend_schema(
