@@ -44,7 +44,7 @@ export default {
   },
   async mounted() {
     try {
-      const response = await fetch("/api/events/");
+      const response = await fetch("/api/events/student/1/");
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {

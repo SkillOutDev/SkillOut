@@ -1679,6 +1679,30 @@ def search_events_by_subject_category(subject):
     ]
 
 
+def get_events_similar_to_student_subjects(student):
+    """Return events that match categories of student's subjects with interest > 0."""
+    base_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+
+    student_subjects = StudentSubject.objects.filter(
+        student=student,
+        interest__gt=0,
+    ).select_related("subject__category")
+
+    category_names = {
+        ss.subject.category.name.strip().lower()
+        for ss in student_subjects
+        if ss.subject and ss.subject.category and ss.subject.category.name
+    }
+
+    similar_events = [
+        event
+        for event in base_events
+        if any((c.name or "").strip().lower() in category_names for c in event.categories.all())
+    ]
+
+    return similar_events, sorted(category_names)
+
+
 @api_view(["GET"])
 def get_events(request):
     """Return all events stored in the database, newest first."""
@@ -1695,47 +1719,19 @@ def get_events(request):
 )
 @api_view(["GET"])
 def get_events_for_student_categories(request, student_id):
-    """Return events filtered by the student's interested subject categories.
-
-    If the student has no subjects with interest > 0, return default (all) events.
-    """
+    """Return only events similar to the student's interested subject categories."""
     try:
         student = Student.objects.get(id=student_id)
     except Student.DoesNotExist:
         return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    base_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
-
-    student_subjects = StudentSubject.objects.filter(
-        student=student,
-        interest__gt=0,
-    ).select_related("subject__category")
-
-    category_names = {
-        ss.subject.category.name.strip().lower()
-        for ss in student_subjects
-        if ss.subject and ss.subject.category and ss.subject.category.name
-    }
-
-    if category_names:
-        events_queryset = [
-            event
-            for event in base_events
-            if any((c.name or "").strip().lower() in category_names for c in event.categories.all())
-        ]
-        mode = "matched"
-        used_categories = sorted(category_names)
-    else:
-        events_queryset = list(base_events)
-        mode = "default"
-        used_categories = []
-
+    events_queryset, used_categories = get_events_similar_to_student_subjects(student)
     data = _events_to_json(events_queryset)
 
     return Response(
         {
             "student_id": student_id,
-            "mode": mode,
+            "mode": "matched-only",
             "categories_used": used_categories,
             "total": len(data),
             "events": data,
