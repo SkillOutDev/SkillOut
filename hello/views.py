@@ -137,23 +137,7 @@ def _normalize_subject_names(raw_subjects):
         '"study_subjects": [',
         'study_subjects": [',
         'study_subjects\\": [',
-        "study_subjects",
-    }
-
-    for item in raw_subjects:
-        value = str(item).strip()
-        if not value:
-            continue
-
-        value = value.replace("\\", "").strip()
-        value = value.strip(',').strip()
-        value = value.strip('"').strip()
-        value = value.strip(',').strip()
-        compact = value.replace(" ", "")
-
-        if not value or value.lower() in skip_tokens:
-            continue
-        if value in skip_tokens:
+            subjects_data = get_student_subjects_with_interest_levels(student)
             continue
         if compact.startswith("study_subjects\":[") or compact.startswith("study_subjects:["):
             continue
@@ -165,6 +149,32 @@ def _normalize_subject_names(raw_subjects):
         seen.add(key)
         cleaned.append(value)
 
+        @extend_schema(
+            request=GetStudentSubjectsPathSerializer,
+            responses={200: StudentSubjectsResponseSerializer, 404: serializers.DictField()},
+        )
+        @api_view(["GET"])
+        def get_student_subjects_with_interest_levels(student):
+            """Return all subjects with the given student's optional interest level."""
+            student_subjects = StudentSubject.objects.filter(student=student).select_related("subject__category")
+            interest_by_subject_id = {ss.subject_id: ss.interest for ss in student_subjects}
+            interest_map = dict(StudentSubject.INTEREST_CHOICES)
+
+            subjects_data = []
+            for subject in Subject.objects.select_related("category").order_by("name"):
+                interest = interest_by_subject_id.get(subject.id)
+                subjects_data.append(
+                    {
+                        "subject_id": subject.id,
+                        "name": subject.name,
+                        "category_id": subject.category.id if subject.category else None,
+                        "category_name": subject.category.name if subject.category else None,
+                        "interest": interest,
+                        "interest_description": interest_map.get(interest),
+                    }
+                )
+
+            return subjects_data
     return cleaned
 
 
@@ -837,17 +847,9 @@ def update_student_subject_interests(request):
         status=status.HTTP_200_OK,
     )
 
-@extend_schema(
-    request=GetStudentSubjectsPathSerializer,
-    responses={200: StudentSubjectsResponseSerializer, 404: serializers.DictField()},
-)
-@api_view(["GET"])
-def get_student_subjects(request, student_id):
-    try:
-        student = Student.objects.get(id=student_id)
-    except Student.DoesNotExist:
-        return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
 
+def build_student_subjects_with_interest(student):
+    """Return student's linked subjects with interest levels and category metadata."""
     student_subjects = StudentSubject.objects.filter(student=student).select_related("subject__category")
     interest_map = dict(StudentSubject.INTEREST_CHOICES)
 
@@ -864,6 +866,21 @@ def get_student_subjects(request, student_id):
                 "interest_description": interest_map.get(ss.interest),
             }
         )
+
+    return subjects_data
+
+@extend_schema(
+    request=GetStudentSubjectsPathSerializer,
+    responses={200: StudentSubjectsResponseSerializer, 404: serializers.DictField()},
+)
+@api_view(["GET"])
+def get_student_subjects(request, student_id):
+    try:
+        student = Student.objects.get(id=student_id)
+    except Student.DoesNotExist:
+        return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    subjects_data = build_student_subjects_with_interest(student)
 
     return Response(
         {
