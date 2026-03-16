@@ -1719,11 +1719,44 @@ def get_events(request):
 )
 @api_view(["GET"])
 def get_events_for_student_categories(request, student_id):
-    """Return only events similar to the student's interested subject categories."""
+    """Return similar events; fallback to default events if student has no usable interests."""
     try:
         student = Student.objects.get(id=student_id)
     except Student.DoesNotExist:
         return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    all_student_subjects = StudentSubject.objects.filter(student=student)
+    rated_student_subjects = all_student_subjects.filter(interest__gt=0)
+
+    if not all_student_subjects.exists():
+        default_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+        data = _events_to_json(default_events)
+        return Response(
+            {
+                "student_id": student_id,
+                "mode": "default",
+                "categories_used": [],
+                "total": len(data),
+                "events": data,
+                "message": "No subjects were found, so default events are displayed.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    if not rated_student_subjects.exists():
+        default_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+        data = _events_to_json(default_events)
+        return Response(
+            {
+                "student_id": student_id,
+                "mode": "default",
+                "categories_used": [],
+                "total": len(data),
+                "events": data,
+                "message": "All ratings are 0/null, so default events are displayed.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
     events_queryset, used_categories = get_events_similar_to_student_subjects(student)
     data = _events_to_json(events_queryset)

@@ -5,6 +5,7 @@
 
       <p v-if="loading" class="state">Loading events...</p>
       <p v-else-if="error" class="error-message">{{ error }}</p>
+      <p v-else-if="infoMessage" class="state">{{ infoMessage }}</p>
       <p v-else class="state">Total: {{ total }}</p>
 
       <ul v-if="!loading && !error && events.length" class="events-list">
@@ -35,6 +36,7 @@ export default {
       total: 0,
       loading: true,
       error: "",
+      infoMessage: "",
     };
   },
   methods: {
@@ -53,6 +55,7 @@ export default {
 
       this.events = Array.isArray(data.events) ? data.events : [];
       this.total = Number.isInteger(data.total) ? data.total : this.events.length;
+      this.infoMessage = typeof data.message === "string" ? data.message : "";
     } catch (error) {
       this.error = error.message || "Failed to load events.";
     } finally {
