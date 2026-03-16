@@ -1631,6 +1631,33 @@ def get_events(request):
 
 
 @extend_schema(
+    responses={200: serializers.DictField(), 404: serializers.DictField()},
+)
+@api_view(["GET"])
+def get_event_by_id(request, event_id):
+    """Return a single event by id with full details."""
+    try:
+        event = Event.objects.prefetch_related("categories").get(id=event_id)
+    except Event.DoesNotExist:
+        return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(
+        {
+            "event_id": event.id,
+            "name": event.name,
+            "date": str(event.date),
+            "time": event.time.strftime("%H:%M"),
+            "place": event.place,
+            "price": str(event.price),
+            "categories": [category.name for category in event.categories.all()],
+            "short_description": event.short_description,
+            "source_url": event.source_url,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@extend_schema(
     responses={200: serializers.DictField()},
 )
 @api_view(["DELETE"])
