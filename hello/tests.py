@@ -548,12 +548,36 @@ class SubjectInterestAssignmentTests(TestCase):
 		self.assertEqual(records.first().interest, 5)
 
 	def test_rejects_interest_outside_valid_range(self):
-		"""Interest values outside 1-5 must be rejected with 400."""
-		response_low = self._post({"subject_id": self.subject.id, "interest": 0})
+		"""Interest values outside 0-5 must be rejected with 400."""
+		response_low = self._post({"subject_id": self.subject.id, "interest": -1})
 		response_high = self._post({"subject_id": self.subject.id, "interest": 6})
 
 		self.assertEqual(response_low.status_code, 400)
 		self.assertEqual(response_high.status_code, 400)
+
+	def test_accepts_zero_as_not_interested(self):
+		"""Interest 0 is valid and should be stored as not interested."""
+		from hello.models import Student, StudentSubject
+		student = Student.objects.get(id=1)
+
+		response = self._post({"subject_id": self.subject.id, "interest": 0})
+
+		self.assertEqual(response.status_code, 201)
+		record = StudentSubject.objects.get(student=student, subject=self.subject)
+		self.assertEqual(record.interest, 0)
+
+	def test_student_subjects_returns_zero_interest_description(self):
+		"""Interest description should reflect 0 - Not Interested mapping."""
+		from hello.models import Student, StudentSubject
+		student = Student.objects.get(id=1)
+		StudentSubject.objects.create(student=student, subject=self.subject, interest=0)
+
+		response = self.client.get(f"/student/{student.id}/subjects/")
+
+		self.assertEqual(response.status_code, 200)
+		subject_row = next(s for s in response.json()["subjects"] if s["name"] == "Algoritmika")
+		self.assertEqual(subject_row["interest"], 0)
+		self.assertEqual(subject_row["interest_description"], "0 - Not Interested")
 
 	def test_rejects_assignment_when_subject_does_not_exist(self):
 		"""Using a non-existent subject_id must return 404."""
