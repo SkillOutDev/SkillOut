@@ -137,9 +137,18 @@ def _normalize_subject_names(raw_subjects):
         '"study_subjects": [',
         'study_subjects": [',
         'study_subjects\\": [',
-            subjects_data = get_student_subjects_with_interest_levels(student)
+    }
+
+    for value in raw_subjects:
+        if not isinstance(value, str):
             continue
-        if compact.startswith("study_subjects\":[") or compact.startswith("study_subjects:["):
+        value = value.strip()
+        if not value:
+            continue
+        compact = value.replace(" ", "")
+        if value in skip_tokens:
+            continue
+        if compact.startswith('study_subjects":[') or compact.startswith("study_subjects:["):
             continue
 
         key = value.casefold()
@@ -149,32 +158,6 @@ def _normalize_subject_names(raw_subjects):
         seen.add(key)
         cleaned.append(value)
 
-        @extend_schema(
-            request=GetStudentSubjectsPathSerializer,
-            responses={200: StudentSubjectsResponseSerializer, 404: serializers.DictField()},
-        )
-        @api_view(["GET"])
-        def get_student_subjects_with_interest_levels(student):
-            """Return all subjects with the given student's optional interest level."""
-            student_subjects = StudentSubject.objects.filter(student=student).select_related("subject__category")
-            interest_by_subject_id = {ss.subject_id: ss.interest for ss in student_subjects}
-            interest_map = dict(StudentSubject.INTEREST_CHOICES)
-
-            subjects_data = []
-            for subject in Subject.objects.select_related("category").order_by("name"):
-                interest = interest_by_subject_id.get(subject.id)
-                subjects_data.append(
-                    {
-                        "subject_id": subject.id,
-                        "name": subject.name,
-                        "category_id": subject.category.id if subject.category else None,
-                        "category_name": subject.category.name if subject.category else None,
-                        "interest": interest,
-                        "interest_description": interest_map.get(interest),
-                    }
-                )
-
-            return subjects_data
     return cleaned
 
 
