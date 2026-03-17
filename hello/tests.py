@@ -1181,6 +1181,73 @@ class GetEventsForStudentCategoriesTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# SD-78: use student interest levels for event sorting
+# ---------------------------------------------------------------------------
+class SD78InterestSortingTests(TestCase):
+	def setUp(self):
+		self.user = User.objects.create_user(username="sd78_user", password="pass")
+		self.student = Student.objects.create(user=self.user)
+
+		self.cat_high = Category.objects.create(name="High Interest")
+		self.cat_low = Category.objects.create(name="Low Interest")
+		self.cat_other = Category.objects.create(name="Other")
+
+		self.subj_high = Subject.objects.create(name="Databases", category=self.cat_high)
+		self.subj_low = Subject.objects.create(name="Art Basics", category=self.cat_low)
+
+		StudentSubject.objects.create(student=self.student, subject=self.subj_high, interest=5)
+		StudentSubject.objects.create(student=self.student, subject=self.subj_low, interest=2)
+
+		# Newer low-interest event: should not outrank high-interest event in SD-78 logic.
+		self.low_event = Event.objects.create(
+			name="Low Priority Expo",
+			date=date(2026, 10, 10),
+			time=time(18, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="Low-interest category event",
+		)
+		self.low_event.categories.add(self.cat_low)
+
+		self.high_event = Event.objects.create(
+			name="High Priority Meetup",
+			date=date(2026, 9, 1),
+			time=time(10, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="High-interest category event",
+		)
+		self.high_event.categories.add(self.cat_high)
+
+		self.unmatched_event = Event.objects.create(
+			name="Unmatched Event",
+			date=date(2026, 11, 1),
+			time=time(12, 0),
+			place="Kaunas",
+			price=Decimal("0"),
+			short_description="No matching student category",
+		)
+		self.unmatched_event.categories.add(self.cat_other)
+
+	def test_orders_matched_events_by_interest_descending(self):
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+
+		data = response.json()
+		self.assertEqual(data["mode"], "matched")
+
+		names = [item["name"] for item in data["events"]]
+		self.assertEqual(names, ["High Priority Meetup", "Low Priority Expo"])
+
+	def test_excludes_unmatched_categories_in_matched_mode(self):
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+
+		names = [item["name"] for item in response.json()["events"]]
+		self.assertNotIn("Unmatched Event", names)
+
+
+# ---------------------------------------------------------------------------
 # Model __str__ tests
 # ---------------------------------------------------------------------------
 class ModelStrTests(TestCase):
