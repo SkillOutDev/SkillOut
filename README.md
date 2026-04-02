@@ -122,6 +122,8 @@ Backend:
 ```powershell
 python manage.py runserver
 python manage.py test
+pytest
+pytest --cov=hello --cov-report=term-missing
 ```
 
 Frontend:
@@ -176,3 +178,30 @@ Confirm:
 ### `File not found` for latest subjects
 
 This means no successful scrape has been completed yet. Submit a valid URL first.
+
+## Automated Testing with Pytest
+
+Pytest is configured for Django through `pytest.ini`.
+
+Run all backend tests:
+
+```powershell
+pytest
+```
+
+Run only tests for one requirement example (semester range validation):
+
+```powershell
+pytest hello/test_requirement_semester_range.py
+```
+
+Run with coverage:
+
+```powershell
+pytest --cov=hello --cov-report=term-missing
+```
+
+CI automation:
+
+- GitHub Actions workflow is added at `.github/workflows/backend-tests.yml`.
+- It runs automatically on pushes and pull requests to `main` or `master`.
