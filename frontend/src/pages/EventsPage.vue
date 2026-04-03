@@ -24,7 +24,7 @@
         @close="closeModal"
       />
 
-      <p v-else-if="!loading && !error" class="state">No events found. Go back to subjects.</p>
+      <p v-if="!loading && !error && !events.length" class="state">No events found. Go back to subjects.</p>
 
       <div class="button-wrapper">
         <button @click="$router.push('/subjects')">Back to Subjects</button>
