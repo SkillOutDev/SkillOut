@@ -1,0 +1,44 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - "SD-[0-9]*-*"
+      - develop
+    paths:
+      - requirements.txt
+      - schema.yml
+      - hello/**
+      - web_project/**
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - requirements.txt
+      - schema.yml
+      - hello/**
+      - web_project/**
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Build backend
+        run: make build
+
+      - name: Run tests
+        run: make test
