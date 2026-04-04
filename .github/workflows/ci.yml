@@ -1,0 +1,68 @@
+name: Cypress UI Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "SD-68*-*"
+      - "SD-59*-*"
+      - "SD-60*-*"
+    paths:
+      - frontend/**
+      - cypress/**
+      - package-lock.json
+      - frontend/package-lock.json
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - frontend/**
+      - cypress/**
+      - package-lock.json
+      - frontend/package-lock.json
+  workflow_dispatch:
+
+jobs:
+  cypress-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Cypress dependencies (root)
+        run: npm install
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend install
+
+      - name: Run Cypress E2E tests
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          start: npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
+          wait-on: http://127.0.0.1:5173
+          wait-on-timeout: 120
+          command: npx cypress run
+
+      - name: Upload Cypress artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+          if-no-files-found: ignore

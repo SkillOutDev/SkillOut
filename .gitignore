@@ -55,6 +55,9 @@ Thumbs.db
 *.log
 logs/
 
+# Node
+node_modules/
+
 # Static & Media files
 staticfiles/
 /static/
@@ -64,6 +67,13 @@ staticfiles/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Cypress
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+cypress/results/
+cypress.env.json
 
 # Environment variables
 .env
@@ -77,5 +87,6 @@ frontend/.vite/deps/vue-router.js
 frontend/.vite/deps/vue-router.js.map
 frontend/.vite/deps/vue.js
 frontend/.vite/deps/vue.js.map
-scraped_text/latest_scrape.txt
-scraped_text/latest_subjects.json
+
+# Scraped outputs
+scraped_text/

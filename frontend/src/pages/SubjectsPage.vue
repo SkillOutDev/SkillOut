@@ -88,8 +88,63 @@ export default {
         this.newSubjectName = "";
       }
     },
+    async ensureSubjectId(index) {
+      const existingId = this.subjectIds[index];
+      if (existingId) {
+        return existingId;
+      }
+
+      const subjectName = (this.subjects[index] || "").trim();
+      if (!subjectName) {
+        return null;
+      }
+
+      const nameKey = subjectName.toLowerCase();
+
+      const studentSubjectsResponse = await fetch("/api/student/1/subjects/");
+      const studentSubjectsData = await studentSubjectsResponse.json().catch(() => ({}));
+      if (studentSubjectsResponse.ok && Array.isArray(studentSubjectsData.subjects)) {
+        const match = studentSubjectsData.subjects.find(
+          (item) => String(item.name || "").trim().toLowerCase() === nameKey
+        );
+        if (match && match.subject_id) {
+          this.subjectIds.splice(index, 1, match.subject_id);
+          return match.subject_id;
+        }
+      }
+
+      const createResponse = await fetch("/api/add-subject/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: subjectName }),
+      });
+      const createData = await createResponse.json().catch(() => ({}));
+
+      if (createResponse.ok && createData.subject_id) {
+        this.subjectIds.splice(index, 1, createData.subject_id);
+        return createData.subject_id;
+      }
+
+      if (createResponse.status === 400 && String(createData.error || "").includes("already exists")) {
+        const refreshResponse = await fetch("/api/student/1/subjects/");
+        const refreshData = await refreshResponse.json().catch(() => ({}));
+        if (refreshResponse.ok && Array.isArray(refreshData.subjects)) {
+          const match = refreshData.subjects.find(
+            (item) => String(item.name || "").trim().toLowerCase() === nameKey
+          );
+          if (match && match.subject_id) {
+            this.subjectIds.splice(index, 1, match.subject_id);
+            return match.subject_id;
+          }
+        }
+      }
+
+      return null;
+    },
     async saveRating(index) {
-      const subjectId = this.subjectIds[index];
+      const subjectId = await this.ensureSubjectId(index);
       const interest = this.ratings[index] || 0;
 
       if (interest < 1) {

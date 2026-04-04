@@ -161,6 +161,7 @@ input {
   border-radius: 8px;
   font-size: 1rem;
   width: 100%;
+  box-sizing: border-box;
 }
 
 input:focus {
@@ -224,5 +225,6 @@ button:disabled {
 
 .field {
   flex: 1;
+  min-width: 0;
 }
 </style>

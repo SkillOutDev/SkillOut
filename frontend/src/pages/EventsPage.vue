@@ -3,12 +3,42 @@
     <section class="card">
       <h1>Events</h1>
 
+      <!-- Filters -->
+      <div class="filters">
+        <div class="filter-group">
+          <label for="city">Miestas:</label>
+          <select id="city" v-model="filters.city" @change="applyFilters">
+            <option v-for="city in cities" :key="city" :value="city === 'Visi' ? '' : city">{{ city }}</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="minPrice">Kaina nuo:</label>
+          <input type="number" id="minPrice" v-model="filters.minPrice" @input="applyFilters" placeholder="0">
+        </div>
+
+        <div class="filter-group">
+          <label for="maxPrice">Kaina iki:</label>
+          <input type="number" id="maxPrice" v-model="filters.maxPrice" @input="applyFilters" placeholder="1000">
+        </div>
+
+        <div class="filter-group">
+          <label for="startDate">Data nuo:</label>
+          <input type="date" id="startDate" v-model="filters.startDate" @change="applyFilters">
+        </div>
+
+        <div class="filter-group">
+          <label for="endDate">Data iki:</label>
+          <input type="date" id="endDate" v-model="filters.endDate" @change="applyFilters">
+        </div>
+      </div>
+
       <p v-if="loading" class="state">Loading events...</p>
       <p v-else-if="error" class="error-message">{{ error }}</p>
       <p v-else class="state">Total: {{ total }}</p>
 
       <ul v-if="!loading && !error && events.length" class="events-list">
-        <li v-for="event in events" :key="event.event_id" class="event-item">
+        <li v-for="event in events" :key="event.event_id" class="event-item" @click="openModal(event)">
           <h2>{{ event.name }}</h2>
           <p><strong>Date:</strong> {{ event.date }} {{ event.time }}</p>
           <p><strong>Place:</strong> {{ event.place }}</p>
@@ -17,7 +47,14 @@
         </li>
       </ul>
 
-      <p v-else-if="!loading && !error" class="state">No events found. Go back to subjects.</p>
+      <EventModal
+        v-if="modalVisible"
+        :event="selectedEvent"
+        :visible="modalVisible"
+        @close="closeModal"
+      />
+
+      <p v-if="!loading && !error && !events.length" class="state">No events found. Go back to subjects.</p>
 
       <div class="button-wrapper">
         <button @click="$router.push('/subjects')">Back to Subjects</button>
@@ -27,25 +64,74 @@
 </template>
 
 <script>
+import EventModal from "../components/EventModal.vue";
+
 export default {
   name: "EventsPage",
+  components: {
+    EventModal,
+  },
   data() {
     return {
       events: [],
       total: 0,
       loading: true,
       error: "",
+      modalVisible: false,
+      selectedEvent: null,
+      filters: {
+        city: "",
+        minPrice: "",
+        maxPrice: "",
+        startDate: "",
+        endDate: "",
+      },
+      cities: ["Visi", "Vilnius", "Kaunas", "Klaipėda", "Šiauliai", "Panevėžys", "Nuotolinis"],
     };
   },
   methods: {
     formatCategories(categories) {
-      return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
-    },
+    return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
   },
-  async mounted() {
+  async openModal(event) {
+    console.log("Opening modal for event", event);
+    this.selectedEvent = event;
+    this.modalVisible = true;
     try {
-      const response = await fetch("/api/events/");
+      const response = await fetch(`/api/events/${event.event_id || event.id}/`);
       const data = await response.json();
+      console.log("Fetched event details", data);
+      if (response.ok) {
+        this.selectedEvent = data;
+      } else {
+        this.selectedEvent = { ...event, ai_sentence: 'Nepavyko gauti DI sakinio.' };
+      }
+    } catch (e) {
+      console.log("Fetch error", e);
+      this.selectedEvent = { ...event, ai_sentence: 'Nepavyko gauti DI sakinio.' };
+    }
+  },
+  closeModal() {
+    this.modalVisible = false;
+    this.selectedEvent = null;
+  },
+  async loadEvents() {
+    this.loading = true;
+    this.error = "";
+    try {
+      const hasFilters = this.filters.city || this.filters.minPrice || this.filters.maxPrice || this.filters.startDate || this.filters.endDate;
+      let url = "/api/events/";
+      if (hasFilters) {
+        const params = new URLSearchParams();
+        if (this.filters.city) params.append('city', this.filters.city);
+        if (this.filters.minPrice) params.append('min_price', this.filters.minPrice);
+        if (this.filters.maxPrice) params.append('max_price', this.filters.maxPrice);
+        if (this.filters.startDate) params.append('start_date', this.filters.startDate);
+        if (this.filters.endDate) params.append('end_date', this.filters.endDate);
+        url = `/api/events/filter/?${params.toString()}`;
+      }
+      const response = await fetch(url);
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to load events.");
@@ -59,6 +145,13 @@ export default {
       this.loading = false;
     }
   },
+  applyFilters() {
+    this.loadEvents();
+  },
+},
+  async mounted() {
+    await this.loadEvents();
+  }
 };
 </script>
 
@@ -68,6 +161,35 @@ export default {
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #f3f8ff 0%, #e3f2eb 100%);
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+
+.filter-group label {
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+.filter-group input,
+.filter-group select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
   padding: 1rem;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }

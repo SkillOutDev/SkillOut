@@ -1,10 +1,16 @@
 import json
 import sys
 import types
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import requests
+from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
+
+from hello.models import Category, Event, Student, StudentSubject, Subject
 
 
 class ScrapeSemesterValidationTests(TestCase):
@@ -571,3 +577,751 @@ class SubjectInterestAssignmentTests(TestCase):
 			any(s["name"] == "Algoritmika" and s["interest"] == 3 for s in subjects),
 			f"Expected subject with interest not found in: {subjects}",
 		)
+
+
+class SD59InterestApiTests(TestCase):
+	"""Unit tests for SD-59: subject interest save/load API behavior."""
+
+	def setUp(self):
+		from django.contrib.auth.models import User
+		from hello.models import Category, Student, Subject
+
+		self.user = User.objects.create_user(username="sd59_user", password="pass")
+		self.student = Student.objects.create(user=self.user)
+		self.category = Category.objects.create(name="Informatics")
+		self.subject_a = Subject.objects.create(name="Programavimas", category=self.category)
+		self.subject_b = Subject.objects.create(name="Algoritmai", category=self.category)
+
+	def test_api_add_interest_alias_saves_interest_for_default_student(self):
+		from hello.models import StudentSubject
+
+		response = self.client.post(
+			"/api/add-interest/",
+			data=json.dumps({"subject_id": self.subject_a.id, "interest": 4}),
+			content_type="application/json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertTrue(
+			StudentSubject.objects.filter(
+				student_id=1,
+				subject=self.subject_a,
+				interest=4,
+			).exists()
+		)
+
+	def test_api_student_subjects_returns_all_subjects_with_optional_interest(self):
+		from hello.models import StudentSubject
+
+		StudentSubject.objects.create(student=self.student, subject=self.subject_a, interest=5)
+
+		response = self.client.get(f"/api/student/{self.student.id}/subjects/")
+
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		rows = {item["name"]: item for item in data.get("subjects", [])}
+
+		self.assertIn("Programavimas", rows)
+		self.assertIn("Algoritmai", rows)
+		self.assertEqual(rows["Programavimas"]["interest"], 5)
+		self.assertIsNone(rows["Algoritmai"]["interest"])
+
+
+class SD77StudentCategoryEventSearchTests(TestCase):
+	"""Unit tests for SD-77: events are searched by student subject categories."""
+
+	def setUp(self):
+		from datetime import date, time
+		from decimal import Decimal
+		from django.contrib.auth.models import User
+		from hello.models import Category, Event, Student, StudentSubject, Subject
+
+		self.user = User.objects.create_user(username="sd77_user", password="pass")
+		self.student = Student.objects.create(user=self.user)
+
+		self.cat_it = Category.objects.create(name="IT")
+		self.cat_art = Category.objects.create(name="Art")
+
+		self.subject_it = Subject.objects.create(name="Databases", category=self.cat_it)
+		self.subject_art = Subject.objects.create(name="Painting", category=self.cat_art)
+
+		StudentSubject.objects.create(student=self.student, subject=self.subject_it, interest=5)
+
+		event_it = Event.objects.create(
+			name="Hackathon",
+			date=date(2026, 3, 20),
+			time=time(10, 0),
+			short_description="Coding event",
+			price=Decimal("0.00"),
+			place="Vilnius",
+		)
+		event_it.categories.add(self.cat_it)
+
+		event_art = Event.objects.create(
+			name="Gallery Night",
+			date=date(2026, 3, 21),
+			time=time(19, 0),
+			short_description="Art event",
+			price=Decimal("10.00"),
+			place="Kaunas",
+		)
+		event_art.categories.add(self.cat_art)
+
+	def test_returns_matched_events_for_student_interest_categories(self):
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data.get("mode"), "matched")
+		self.assertEqual(data.get("total"), 1)
+		names = [e["name"] for e in data.get("events", [])]
+		self.assertEqual(names, ["Hackathon"])
+
+	def test_returns_default_events_when_student_has_no_saved_interests(self):
+		from django.contrib.auth.models import User
+		from hello.models import Student
+
+		user2 = User.objects.create_user(username="sd77_empty", password="pass")
+		student2 = Student.objects.create(user=user2)
+
+		response = self.client.get(f"/api/events/student/{student2.id}/")
+
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data.get("mode"), "default")
+		self.assertEqual(data.get("total"), 2)
+
+	def test_returns_404_for_unknown_student(self):
+		response = self.client.get("/api/events/student/99999/")
+		self.assertEqual(response.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# add_student view tests
+# ---------------------------------------------------------------------------
+class AddStudentTests(TestCase):
+	endpoint = "/add-student/"
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def test_creates_student_with_valid_data(self):
+		response = self._post({"username": "alice", "password": "secret123"})
+		self.assertEqual(response.status_code, 201)
+		data = response.json()
+		self.assertEqual(data["message"], "Student created successfully")
+		self.assertIn("student_id", data)
+		self.assertIn("user_id", data)
+
+	def test_rejects_missing_username(self):
+		response = self._post({"password": "secret123"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Username and password are required", response.json()["error"])
+
+	def test_rejects_missing_password(self):
+		response = self._post({"username": "alice"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Username and password are required", response.json()["error"])
+
+	def test_rejects_duplicate_username(self):
+		self._post({"username": "bob", "password": "pass1"})
+		response = self._post({"username": "bob", "password": "pass2"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Username already exists", response.json()["error"])
+
+	def test_creates_student_with_optional_fields(self):
+		response = self._post({
+			"username": "carol",
+			"password": "pass",
+			"email": "carol@example.com",
+			"first_name": "Carol",
+			"last_name": "Smith",
+		})
+		self.assertEqual(response.status_code, 201)
+		user = User.objects.get(username="carol")
+		self.assertEqual(user.email, "carol@example.com")
+		self.assertEqual(user.first_name, "Carol")
+
+
+# ---------------------------------------------------------------------------
+# add_category view tests
+# ---------------------------------------------------------------------------
+class AddCategoryTests(TestCase):
+	endpoint = "/add-category/"
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def test_creates_category_successfully(self):
+		response = self._post({"name": "Engineering"})
+		self.assertEqual(response.status_code, 201)
+		data = response.json()
+		self.assertEqual(data["message"], "Category created successfully")
+		self.assertEqual(data["name"], "Engineering")
+
+	def test_rejects_missing_name(self):
+		response = self._post({})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Name is required", response.json()["error"])
+
+	def test_rejects_duplicate_category(self):
+		self._post({"name": "IT"})
+		response = self._post({"name": "IT"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Category already exists", response.json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# add_subject view tests
+# ---------------------------------------------------------------------------
+class AddSubjectTests(TestCase):
+	endpoint = "/add-subject/"
+
+	def setUp(self):
+		self.category = Category.objects.create(name="IT")
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def test_creates_subject_without_category(self):
+		response = self._post({"name": "Algebra"})
+		self.assertEqual(response.status_code, 201)
+		data = response.json()
+		self.assertEqual(data["name"], "Algebra")
+		self.assertIsNone(data["category_id"])
+
+	def test_creates_subject_with_valid_category(self):
+		response = self._post({"name": "Tinklai", "category_id": self.category.id})
+		self.assertEqual(response.status_code, 201)
+		data = response.json()
+		self.assertEqual(data["category_id"], self.category.id)
+		self.assertEqual(data["category_name"], "IT")
+
+	def test_rejects_missing_name(self):
+		response = self._post({})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Name is required", response.json()["error"])
+
+	def test_rejects_duplicate_subject(self):
+		self._post({"name": "Matematika"})
+		response = self._post({"name": "Matematika"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Subject already exists", response.json()["error"])
+
+	def test_rejects_nonexistent_category(self):
+		response = self._post({"name": "Fizika", "category_id": 99999})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("Category not found", response.json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# update_student_subject_interests (bulk update) tests
+# ---------------------------------------------------------------------------
+class UpdateSubjectInterestsTests(TestCase):
+	endpoint = "/update-interests/"
+
+	def setUp(self):
+		self.user = User.objects.create_user(username="student1", password="pass")
+		self.student = Student.objects.create(user=self.user)
+		self.category = Category.objects.create(name="IT")
+		self.subject = Subject.objects.create(name="Programavimas", category=self.category)
+		StudentSubject.objects.create(student=self.student, subject=self.subject, interest=1)
+
+	def _put(self, payload):
+		return self.client.put(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def test_bulk_update_interest_successfully(self):
+		response = self._put({"subjects": [{"subject_id": self.subject.id, "interest": 4}]})
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["updated_count"], 1)
+		self.assertEqual(data["failed_count"], 0)
+		record = StudentSubject.objects.get(student=self.student, subject=self.subject)
+		self.assertEqual(record.interest, 4)
+
+	def test_rejects_empty_subjects_list(self):
+		response = self._put({"subjects": []})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("subjects", response.json()["error"])
+
+	def test_rejects_missing_subjects_field(self):
+		response = self._put({})
+		self.assertEqual(response.status_code, 400)
+
+	def test_fails_gracefully_for_nonexistent_subject(self):
+		response = self._put({"subjects": [{"subject_id": 99999, "interest": 3}]})
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["failed_count"], 1)
+		self.assertIn("Subject not found", data["failed"][0]["error"])
+
+	def test_fails_gracefully_for_invalid_interest_value(self):
+		response = self._put({"subjects": [{"subject_id": self.subject.id, "interest": 9}]})
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["failed_count"], 1)
+
+	def test_fails_gracefully_for_missing_student_subject_relation(self):
+		new_subject = Subject.objects.create(name="Naujas", category=self.category)
+		response = self._put({"subjects": [{"subject_id": new_subject.id, "interest": 3}]})
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["failed_count"], 1)
+		self.assertIn("not found", data["failed"][0]["error"])
+
+
+# ---------------------------------------------------------------------------
+# get_student_subjects tests
+# ---------------------------------------------------------------------------
+class GetStudentSubjectsTests(TestCase):
+	def setUp(self):
+		self.user = User.objects.create_user(username="stu2", password="pass")
+		self.student = Student.objects.create(user=self.user)
+		self.category = Category.objects.create(name="Math")
+		self.subject = Subject.objects.create(name="Kalkulus", category=self.category)
+		StudentSubject.objects.create(student=self.student, subject=self.subject, interest=2)
+
+	def test_returns_subjects_for_existing_student(self):
+		response = self.client.get(f"/student/{self.student.id}/subjects/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["student_id"], self.student.id)
+		self.assertEqual(data["student_username"], "stu2")
+		self.assertIsInstance(data["subjects"], list)
+
+	def test_returns_404_for_missing_student(self):
+		response = self.client.get("/student/99999/subjects/")
+		self.assertEqual(response.status_code, 404)
+		self.assertIn("Student not found", response.json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# _parse_event_date helper tests
+# ---------------------------------------------------------------------------
+class ParseEventDateTests(TestCase):
+	def _parse(self, value):
+		from hello.views import _parse_event_date
+		return _parse_event_date(value)
+
+	def test_iso_format_yyyy_mm_dd(self):
+		self.assertEqual(self._parse("2026-03-15"), date(2026, 3, 15))
+
+	def test_slash_format_dd_mm_yyyy(self):
+		self.assertEqual(self._parse("15/03/2026"), date(2026, 3, 15))
+
+	def test_english_month_name_with_range(self):
+		result = self._parse("May 2-3 2026")
+		self.assertEqual(result, date(2026, 5, 2))
+
+	def test_day_month_year_format(self):
+		result = self._parse("20 March 2026")
+		self.assertEqual(result, date(2026, 3, 20))
+
+	def test_range_with_month_at_end(self):
+		result = self._parse("15-17 May 2026")
+		self.assertEqual(result, date(2026, 5, 15))
+
+	def test_year_first_format(self):
+		result = self._parse("2026 May 22-24")
+		self.assertEqual(result, date(2026, 5, 22))
+
+	def test_returns_none_for_unrecognized_format(self):
+		self.assertIsNone(self._parse("not a date"))
+
+	def test_returns_none_for_empty_string(self):
+		self.assertIsNone(self._parse(""))
+
+	def test_returns_none_for_none(self):
+		self.assertIsNone(self._parse(None))
+
+	def test_lithuanian_month_name(self):
+		result = self._parse("20 kovo 2026")
+		self.assertEqual(result, date(2026, 3, 20))
+
+
+# ---------------------------------------------------------------------------
+# _parse_event_time helper tests
+# ---------------------------------------------------------------------------
+class ParseEventTimeTests(TestCase):
+	def _parse(self, value):
+		from hello.views import _parse_event_time
+		return _parse_event_time(value)
+
+	def test_hhmm_format(self):
+		self.assertEqual(self._parse("14:30"), time(14, 30))
+
+	def test_hhmmss_format(self):
+		self.assertEqual(self._parse("09:05:00"), time(9, 5, 0))
+
+	def test_returns_none_for_invalid(self):
+		self.assertIsNone(self._parse("not a time"))
+
+	def test_returns_none_for_none(self):
+		self.assertIsNone(self._parse(None))
+
+	def test_returns_none_for_empty(self):
+		self.assertIsNone(self._parse(""))
+
+
+# ---------------------------------------------------------------------------
+# _parse_event_price helper tests
+# ---------------------------------------------------------------------------
+class ParseEventPriceTests(TestCase):
+	def _parse(self, value):
+		from hello.views import _parse_event_price
+		return _parse_event_price(value)
+
+	def test_numeric_string(self):
+		self.assertEqual(self._parse("25.50"), Decimal("25.50"))
+
+	def test_eur_suffix(self):
+		self.assertEqual(self._parse("10 EUR"), Decimal("10.00"))
+
+	def test_euro_sign(self):
+		self.assertEqual(self._parse("€15"), Decimal("15.00"))
+
+	def test_free_string(self):
+		self.assertEqual(self._parse("free"), Decimal("0.00"))
+
+	def test_empty_string_returns_zero(self):
+		self.assertEqual(self._parse(""), Decimal("0.00"))
+
+	def test_none_returns_zero(self):
+		self.assertEqual(self._parse(None), Decimal("0.00"))
+
+	def test_comma_decimal(self):
+		self.assertEqual(self._parse("12,50"), Decimal("12.50"))
+
+	def test_invalid_returns_none(self):
+		self.assertIsNone(self._parse("not-a-price-xyz"))
+
+
+# ---------------------------------------------------------------------------
+# add_event view tests
+# ---------------------------------------------------------------------------
+class AddEventTests(TestCase):
+	endpoint = "/api/events/add/"
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def _valid_payload(self, **overrides):
+		payload = {
+			"name": "Test Event",
+			"date": "2026-06-01",
+			"place": "Vilnius",
+			"price": "10.00",
+		}
+		payload.update(overrides)
+		return payload
+
+	def test_creates_event_successfully(self):
+		response = self._post(self._valid_payload())
+		self.assertEqual(response.status_code, 201)
+		data = response.json()
+		self.assertEqual(data["name"], "Test Event")
+		self.assertTrue(data["created"])
+
+	def test_updates_existing_event(self):
+		self._post(self._valid_payload())
+		response = self._post(self._valid_payload(price="20.00"))
+		self.assertEqual(response.status_code, 200)
+		self.assertFalse(response.json()["created"])
+
+	def test_rejects_missing_name(self):
+		response = self._post({"date": "2026-06-01", "place": "Vilnius"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("name", response.json()["error"].lower())
+
+	def test_rejects_missing_date(self):
+		response = self._post({"name": "Event", "place": "Vilnius"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("date", response.json()["error"].lower())
+
+	def test_rejects_missing_place(self):
+		response = self._post({"name": "Event", "date": "2026-06-01"})
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("place", response.json()["error"].lower())
+
+	def test_rejects_invalid_date_format(self):
+		response = self._post(self._valid_payload(date="not-a-date"))
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("date", response.json()["error"].lower())
+
+	def test_creates_event_with_categories(self):
+		response = self._post(self._valid_payload(categories=["IT", "Business"]))
+		self.assertEqual(response.status_code, 201)
+		self.assertIn("IT", response.json()["categories"])
+
+	def test_creates_event_with_source_url(self):
+		response = self._post(self._valid_payload(source_url="https://example.com/event"))
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(response.json()["source_url"], "https://example.com/event")
+
+
+# ---------------------------------------------------------------------------
+# get_events view tests
+# ---------------------------------------------------------------------------
+class GetEventsTests(TestCase):
+	def setUp(self):
+		self.cat = Category.objects.create(name="Tech")
+		Event.objects.create(
+			name="Conf 2026",
+			date=date(2026, 5, 10),
+			time=time(10, 0),
+			place="Kaunas",
+			price=Decimal("0"),
+			short_description="A tech conf",
+		)
+
+	def test_returns_all_events(self):
+		response = self.client.get("/api/events/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["total"], 1)
+		self.assertEqual(data["events"][0]["name"], "Conf 2026")
+
+	def test_returns_empty_list_when_no_events(self):
+		Event.objects.all().delete()
+		response = self.client.get("/api/events/")
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()["total"], 0)
+
+
+# ---------------------------------------------------------------------------
+# get_event_by_id view tests
+# ---------------------------------------------------------------------------
+class GetEventByIdTests(TestCase):
+	def setUp(self):
+		self.event = Event.objects.create(
+			name="Single Event",
+			date=date(2026, 7, 1),
+			time=time(18, 0),
+			place="Klaipeda",
+			price=Decimal("5.00"),
+			short_description="A single event",
+		)
+
+	def test_returns_event_by_valid_id(self):
+		response = self.client.get(f"/api/events/{self.event.id}/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["name"], "Single Event")
+		self.assertEqual(data["place"], "Klaipeda")
+
+	def test_returns_404_for_nonexistent_event(self):
+		response = self.client.get("/api/events/99999/")
+		self.assertEqual(response.status_code, 404)
+		self.assertIn("Event not found", response.json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# filter_events view tests
+# ---------------------------------------------------------------------------
+class FilterEventsTests(TestCase):
+	def setUp(self):
+		self.cat = Category.objects.create(name="Music")
+		self.e1 = Event.objects.create(
+			name="Free Concert",
+			date=date(2026, 6, 1),
+			time=time(19, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="Free outdoor concert",
+		)
+		self.e2 = Event.objects.create(
+			name="Paid Seminar",
+			date=date(2026, 6, 15),
+			time=time(10, 0),
+			place="Kaunas",
+			price=Decimal("50.00"),
+			short_description="A paid seminar",
+		)
+
+	def test_filter_by_min_price(self):
+		response = self.client.get("/api/events/filter/?min_price=10")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Paid Seminar", names)
+		self.assertNotIn("Free Concert", names)
+
+	def test_filter_by_max_price(self):
+		response = self.client.get("/api/events/filter/?max_price=5")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Free Concert", names)
+		self.assertNotIn("Paid Seminar", names)
+
+	def test_filter_by_city(self):
+		response = self.client.get("/api/events/filter/?city=Vilnius")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Free Concert", names)
+		self.assertNotIn("Paid Seminar", names)
+
+	def test_filter_by_date_range(self):
+		response = self.client.get("/api/events/filter/?start_date=2026-06-10&end_date=2026-06-20")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Paid Seminar", names)
+		self.assertNotIn("Free Concert", names)
+
+	def test_rejects_inverted_price_range(self):
+		response = self.client.get("/api/events/filter/?min_price=100&max_price=10")
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("min_price", response.json()["error"])
+
+	def test_rejects_inverted_date_range(self):
+		response = self.client.get("/api/events/filter/?start_date=2026-07-01&end_date=2026-06-01")
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("start_date", response.json()["error"])
+
+	def test_rejects_inverted_time_range(self):
+		response = self.client.get("/api/events/filter/?start_time=20:00&end_time=09:00")
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("start_time", response.json()["error"])
+
+	def test_no_filters_returns_all(self):
+		response = self.client.get("/api/events/filter/")
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()["total"], 2)
+
+
+# ---------------------------------------------------------------------------
+# purge_ended_events view tests
+# ---------------------------------------------------------------------------
+class PurgeEndedEventsTests(TestCase):
+	def test_deletes_past_events(self):
+		Event.objects.create(
+			name="Old Event",
+			date=date(2020, 1, 1),
+			time=time(10, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="Past event",
+		)
+		Event.objects.create(
+			name="Future Event",
+			date=date(2030, 1, 1),
+			time=time(10, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="Future event",
+		)
+		response = self.client.delete("/api/events/purge-ended/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["deleted_count"], 1)
+		deleted_names = [e["name"] for e in data["deleted_events"]]
+		self.assertIn("Old Event", deleted_names)
+		self.assertTrue(Event.objects.filter(name="Future Event").exists())
+
+	def test_returns_zero_when_no_ended_events(self):
+		Event.objects.create(
+			name="Future Only",
+			date=date(2030, 6, 1),
+			time=time(10, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="Future",
+		)
+		response = self.client.delete("/api/events/purge-ended/")
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()["deleted_count"], 0)
+
+
+# ---------------------------------------------------------------------------
+# get_events_for_student_categories view tests
+# ---------------------------------------------------------------------------
+class GetEventsForStudentCategoriesTests(TestCase):
+	def setUp(self):
+		self.user = User.objects.create_user(username="evtstudent", password="pass")
+		self.student = Student.objects.create(user=self.user)
+		self.cat = Category.objects.create(name="IT")
+		self.subject = Subject.objects.create(name="Programavimas", category=self.cat)
+		self.event = Event.objects.create(
+			name="IT Conference",
+			date=date(2026, 9, 1),
+			time=time(10, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="IT event",
+		)
+		self.event.categories.add(self.cat)
+
+	def test_returns_matched_events_when_student_has_rated_subjects(self):
+		StudentSubject.objects.create(student=self.student, subject=self.subject, interest=3)
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["mode"], "matched")
+		names = [e["name"] for e in data["events"]]
+		self.assertIn("IT Conference", names)
+
+	def test_returns_default_events_when_student_has_no_subjects(self):
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["mode"], "default")
+
+	def test_returns_default_events_when_all_interests_are_zero(self):
+		StudentSubject.objects.create(student=self.student, subject=self.subject, interest=None)
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["mode"], "default")
+
+	def test_returns_404_for_nonexistent_student(self):
+		response = self.client.get("/api/events/student/99999/")
+		self.assertEqual(response.status_code, 404)
+		self.assertIn("Student not found", response.json()["error"])
+
+
+# ---------------------------------------------------------------------------
+# Model __str__ tests
+# ---------------------------------------------------------------------------
+class ModelStrTests(TestCase):
+	def test_category_str(self):
+		cat = Category.objects.create(name="Science")
+		self.assertEqual(str(cat), "Science")
+
+	def test_subject_str(self):
+		cat = Category.objects.create(name="IT")
+		subj = Subject.objects.create(name="Algorithms", category=cat)
+		self.assertIn("Algorithms", str(subj))
+
+	def test_event_str(self):
+		event = Event.objects.create(
+			name="Test Event",
+			date=date(2026, 5, 1),
+			time=time(9, 0),
+			place="Vilnius",
+			price=Decimal("0"),
+			short_description="",
+		)
+		self.assertEqual(str(event), "Test Event")
+
+	def test_student_str(self):
+		user = User.objects.create_user(username="strtest", password="pass")
+		student = Student.objects.create(user=user)
+		self.assertIn("strtest", str(student))

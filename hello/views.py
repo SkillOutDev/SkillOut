@@ -96,6 +96,16 @@ class ScrapeEventsRequestSerializer(serializers.Serializer):
     city = serializers.CharField(required=False, allow_blank=True)
 
 
+class FilterEventsQuerySerializer(serializers.Serializer):
+    min_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    max_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    city = serializers.CharField(required=False, allow_blank=True)
+    start_time = serializers.TimeField(required=False)
+    end_time = serializers.TimeField(required=False)
+
+
 class SubjectItemSerializer(serializers.Serializer):
     subject_id = serializers.IntegerField()
     name = serializers.CharField()
@@ -131,7 +141,9 @@ def _normalize_subject_names(raw_subjects):
     }
 
     for item in raw_subjects:
-        value = str(item).strip()
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
         if not value:
             continue
 
@@ -145,7 +157,7 @@ def _normalize_subject_names(raw_subjects):
             continue
         if value in skip_tokens:
             continue
-        if compact.startswith("study_subjects\":[") or compact.startswith("study_subjects:["):
+        if compact.startswith('study_subjects":[') or compact.startswith("study_subjects:["):
             continue
 
         key = value.casefold()
@@ -944,17 +956,6 @@ def scrape_text(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    # prompt = (
-    #     "Extract only study subject names from semesters "
-    #     f"{from_semester} to {to_semester} from the provided webpage text. "
-    #     f"That means study subjects are between text for {from_semester} semester to {to_semester + 1} semester. "
-    #     "Do not translate or modify original subject text. "
-    #     "Return strict JSON only in this format: "
-    #     '{"study_subjects": ["subject 1", "subject 2"]}. '
-    #     "No markdown, no explanation.\n\n"
-    #     f"Webpage text:\n{text}"
-    # )
-
     prompt = (
     "Task: Extract study subjects only from selected semesters.\n"
     f"Selected semesters: {from_semester} to {to_semester} (inclusive).\n\n"
@@ -1614,27 +1615,228 @@ def get_latest_events(request):
     )
 
 
+def _event_to_json(event):
+    return {
+        "event_id": event.id,
+        "name": event.name,
+        "date": str(event.date),
+        "time": event.time.strftime("%H:%M") if event.time else "",
+        "place": event.place,
+        "price": str(event.price),
+        "categories": [c.name for c in event.categories.all()],
+        "short_description": event.short_description,
+        "source_url": event.source_url,
+    }
+
+
+def _events_to_json(events):
+    return [_event_to_json(e) for e in events]
+
+
+def search_events_by_subject_category(subject):
+    """Find events whose categories match the given subject's category.
+
+    Accepts a Subject instance, subject id, or subject name. Returns a list of Event objects.
+    """
+    subject_obj = None
+
+    if isinstance(subject, Subject):
+        subject_obj = subject
+    elif isinstance(subject, int):
+        subject_obj = Subject.objects.filter(id=subject).select_related("category").first()
+    elif isinstance(subject, str):
+        subject_obj = Subject.objects.filter(name__iexact=subject.strip()).select_related("category").first()
+
+    if not subject_obj or not subject_obj.category or not subject_obj.category.name:
+        return []
+
+    category_name = subject_obj.category.name.strip().lower()
+    events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+
+    return [
+        event
+        for event in events
+        if any((c.name or "").strip().lower() == category_name for c in event.categories.all())
+    ]
+
+
 @api_view(["GET"])
 def get_events(request):
     """Return all events stored in the database, newest first."""
     events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
 
-    data = [
-        {
-            "event_id": e.id,
-            "name": e.name,
-            "date": str(e.date),
-            "time": e.time.strftime("%H:%M"),
-            "place": e.place,
-            "price": str(e.price),
-            "categories": [c.name for c in e.categories.all()],
-            "short_description": e.short_description,
-            "source_url": e.source_url,
-        }
-        for e in events
-    ]
+    data = _events_to_json(events)
 
     return Response({"total": len(data), "events": data}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    request=GetStudentSubjectsPathSerializer,
+    responses={200: serializers.DictField(), 404: serializers.DictField()},
+)
+@api_view(["GET"])
+def get_events_for_student_categories(request, student_id):
+    """Return events filtered by the student's interested subject categories.
+
+    If the student has no subjects with interest > 0, return default (all) events.
+    """
+    try:
+        student = Student.objects.get(id=student_id)
+    except Student.DoesNotExist:
+        return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    base_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+
+    student_subjects = StudentSubject.objects.filter(
+        student=student,
+        interest__gt=0,
+    ).select_related("subject__category")
+
+    category_names = {
+        ss.subject.category.name.strip().lower()
+        for ss in student_subjects
+        if ss.subject and ss.subject.category and ss.subject.category.name
+    }
+
+    if category_names:
+        events_queryset = [
+            event
+            for event in base_events
+            if any((c.name or "").strip().lower() in category_names for c in event.categories.all())
+        ]
+        mode = "matched"
+        used_categories = sorted(category_names)
+    else:
+        events_queryset = list(base_events)
+        mode = "default"
+        used_categories = []
+
+    data = _events_to_json(events_queryset)
+
+    return Response(
+        {
+            "student_id": student_id,
+            "mode": mode,
+            "categories_used": used_categories,
+            "total": len(data),
+            "events": data,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@extend_schema(
+    parameters=[FilterEventsQuerySerializer],
+    responses={200: serializers.DictField(), 400: serializers.DictField()},
+)
+@api_view(["GET"])
+def filter_events(request):
+    """Filter events by price range, date range, city, and time range."""
+    serializer = FilterEventsQuerySerializer(data=request.query_params)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    filters = serializer.validated_data
+
+    min_price = filters.get("min_price")
+    max_price = filters.get("max_price")
+    start_date = filters.get("start_date")
+    end_date = filters.get("end_date")
+    city = (filters.get("city") or "").strip()
+    start_time = filters.get("start_time")
+    end_time = filters.get("end_time")
+
+    if min_price is not None and max_price is not None and min_price > max_price:
+        return Response(
+            {"error": "min_price cannot be greater than max_price."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if start_date and end_date and start_date > end_date:
+        return Response(
+            {"error": "start_date cannot be greater than end_date."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if start_time and end_time and start_time > end_time:
+        return Response(
+            {"error": "start_time cannot be greater than end_time."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    events = Event.objects.prefetch_related("categories").order_by("date", "time")
+
+    if min_price is not None:
+        events = events.filter(price__gte=min_price)
+    if max_price is not None:
+        events = events.filter(price__lte=max_price)
+    if start_date is not None:
+        events = events.filter(date__gte=start_date)
+    if end_date is not None:
+        events = events.filter(date__lte=end_date)
+    if city:
+        events = events.filter(place__icontains=city)
+    if start_time is not None:
+        events = events.filter(time__gte=start_time)
+    if end_time is not None:
+        events = events.filter(time__lte=end_time)
+
+    data = _events_to_json(events)
+
+    return Response({"total": len(data), "events": data}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    responses={200: serializers.DictField(), 404: serializers.DictField()},
+)
+@api_view(["GET"])
+def get_event_by_id(request, event_id):
+    """Return a single event by id with full details."""
+    try:
+        event = Event.objects.prefetch_related("categories").get(id=event_id)
+    except Event.DoesNotExist:
+        return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Get student_id from query param or use default
+    student_id = request.query_params.get("student_id")
+    if not student_id:
+        student_id = 1  # fallback default
+    try:
+        student = Student.objects.get(id=student_id)
+        student_subjects = student.subjects.all()
+        student_subject_names = [s.name for s in student_subjects]
+    except Student.DoesNotExist:
+        student_subject_names = []
+
+    # AI logic: generate personalized sentence
+    import ollama
+    event_topics = ", ".join([c for c in [event.short_description] + [cat.name for cat in event.categories.all()] if c])
+    subj_str = ", ".join(student_subject_names) if student_subject_names else "tavo studijų dalykai"
+    ai_prompt = (
+        f"Paaiškink, kodėl renginys '{event.name}' ({event_topics}) gali būti naudingas studentui, kurio studijų dalykai: {subj_str}. "
+        "Sugeneruok 1-2 sakinius, susiedamas renginio temą su studento studijų sritimis. Atsakyk lietuviškai."
+    )
+    try:
+        ai_response = ollama.chat(model="llama3", messages=[{"role": "user", "content": ai_prompt}])
+        ai_sentence = ai_response.get("message", {}).get("content", "")
+    except Exception as e:
+        ai_sentence = "DI sakinys negautas."
+
+    return Response(
+        {
+            "event_id": event.id,
+            "name": event.name,
+            "date": str(event.date),
+            "time": event.time.strftime("%H:%M"),
+            "place": event.place,
+            "price": str(event.price),
+            "categories": [category.name for category in event.categories.all()],
+            "short_description": event.short_description,
+            "source_url": event.source_url,
+            "ai_sentence": ai_sentence,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @extend_schema(

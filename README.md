@@ -122,6 +122,8 @@ Backend:
 ```powershell
 python manage.py runserver
 python manage.py test
+pytest
+pytest --cov=hello --cov-report=term-missing
 ```
 
 Frontend:
@@ -131,6 +133,85 @@ cd frontend
 npm run dev
 npm run build
 npm run serve
+```
+
+Testing:
+
+```powershell
+# Django tests
+python manage.py test
+
+# Cypress (install once in project root)
+npm install
+
+# Open Cypress UI
+npx cypress open
+
+# Run all Cypress E2E tests (headless)
+npx cypress run
+
+# Run SD-68 spec only
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js"
+```
+
+## 4) Testing Setup (Django + Cypress)
+
+This project currently uses:
+
+- Django unit/integration tests via `python manage.py test`
+- Cypress end-to-end UI tests from `cypress/e2e/`
+
+### Backend Tests (Django)
+
+Run from repository root with venv activated:
+
+```powershell
+python manage.py test
+```
+
+### UI Tests (Cypress + Vue)
+
+1. Install Cypress dependencies in repository root (once):
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut
+npm install
+```
+
+2. Start frontend dev server in a separate terminal:
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut\frontend
+npm run dev
+```
+
+3. Run Cypress from repository root:
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut
+npx cypress open
+```
+
+or headless:
+
+```powershell
+npx cypress run
+```
+
+Run only SD-68 events test:
+
+```powershell
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js"
+```
+
+### Port Note for Cypress
+
+Cypress baseUrl is set to `http://localhost:5173` in `cypress.config.js`.
+
+If Vite starts on a different port (for example `5174`), run Cypress with an override:
+
+```powershell
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js" --config baseUrl=http://localhost:5174
 ```
 
 ## API Endpoints
@@ -176,3 +257,30 @@ Confirm:
 ### `File not found` for latest subjects
 
 This means no successful scrape has been completed yet. Submit a valid URL first.
+
+## Automated Testing with Pytest
+
+Pytest is configured for Django through `pytest.ini`.
+
+Run all backend tests:
+
+```powershell
+pytest
+```
+
+Run only tests for one requirement example (semester range validation):
+
+```powershell
+pytest hello/test_requirement_semester_range.py
+```
+
+Run with coverage:
+
+```powershell
+pytest --cov=hello --cov-report=term-missing
+```
+
+CI automation:
+
+- GitHub Actions workflow is added at `.github/workflows/backend-tests.yml`.
+- It runs automatically on pushes and pull requests to `main` or `master`.
