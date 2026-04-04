@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - SD-59-as-kaip-studentas-noriu-pasirinkti-studiju-dalyk
+      - copilot/sd-59-fix-cypress-timeout-tests
   pull_request:
     branches:
       - SD-59-as-kaip-studentas-noriu-pasirinkti-studiju-dalyk
+      - copilot/sd-59-fix-cypress-timeout-tests
 
 jobs:
   cypress-run:
