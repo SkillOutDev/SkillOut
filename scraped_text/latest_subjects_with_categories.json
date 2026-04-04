@@ -1,0 +1,190 @@
+{
+  "url": "https://is.vu.lt/pls/pub/spk.plan_test?p_f=html&p_k=lt&p_str=24581",
+  "from_semester": 1,
+  "to_semester": 8,
+  "student_id": 1,
+  "model": "llama3",
+  "processed": [
+    {
+      "subject": "Azijos studijos",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "FilosF",
+      "category": "Philosophy",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Ps",
+      "category": "Mathematics",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "NL",
+      "category": "IT",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Sinologija",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Intelektinės Vakarų kultūros raida",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos istorija I/II d",
+      "category": "History",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos kultūra ir jos tyrimai I/II d",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinų kalba A1",
+      "category": "Linguistics",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Užsienio kalba (anglų)",
+      "category": "Languages",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Individualiųjų studijų dalykai",
+      "category": "Education",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos istorija II/II d",
+      "category": "History",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos kultūra ir jos tyrimai II/II d",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinų kalba A2",
+      "category": "Linguistics",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Konfucianizmas",
+      "category": "Philosophy",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kultūros teorija",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Budizmas",
+      "category": "Philosophy",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Daoizmas",
+      "category": "Philosophy",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinų kalba B1",
+      "category": "Linguistics",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Sociokultūrinės antropologijos pagrindai",
+      "category": "Social Sciences",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos visuomenės studijos",
+      "category": "Social Sciences",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Religijotyros metodologija",
+      "category": "Philosophy",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Rytų Azijos menas",
+      "category": "Arts",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Dalykinė kinų kalba I/II d",
+      "category": "Linguistics",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Klasikinės kinų kultūros tekstai I/II d",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Tarpkultūrinė komunikacija",
+      "category": "Communication",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Kinijos modernizmas",
+      "category": "Social Sciences",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Klasikinės kinų kultūros tekstai II/II d",
+      "category": "Humanities",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Bakalauro baigiamasis darbas (kryptis: regiono studijos)",
+      "category": "IT",
+      "student_id": 1,
+      "interest": null
+    },
+    {
+      "subject": "Profesinė praktika",
+      "category": "Business",
+      "student_id": 1,
+      "interest": null
+    }
+  ],
+  "failed": []
+}

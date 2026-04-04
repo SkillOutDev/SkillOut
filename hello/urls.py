@@ -1,0 +1,33 @@
+# The urls.py file is where you specify patterns to route different URLs to their appropriate views.
+# The code below contains one route to
+# map root URL of the app ("") to the views.home function that you just added to hello/views.py:
+
+from django.urls import path
+from hello import views
+
+urlpatterns = [
+    path("", views.home, name="home"),
+    path("add-student/", views.add_student, name="add_student"),
+    path("add-category/", views.add_category, name="add_category"),
+    path("add-subject/", views.add_subject, name="add_subject"),
+    path("api/add-subject/", views.add_subject, name="api_add_subject"),
+    path("add-interest/", views.add_subject_interest, name="add_subject_interest"),
+    path("api/add-interest/", views.add_subject_interest, name="api_add_subject_interest"),
+    path("update-interests/", views.update_student_subject_interests, name="update_student_subject_interests"),
+    path("student/<int:student_id>/subjects/", views.get_student_subjects, name="get_student_subjects"),
+    path("api/student/<int:student_id>/subjects/", views.get_student_subjects, name="api_get_student_subjects"),
+    path("student/<int:student_id>/subjedcts/", views.get_student_subjects, name="get_student_subjedcts"),
+    path("api/scrape-text/", views.scrape_text, name="scrape-text"),
+    path("api/import-subjects/", views.import_subjects_with_categories, name="import-subjects"),
+    path("api/scrape-import-assign/", views.scrape_import_and_assign_subjects, name="scrape-import-assign"),
+    path("api/scrape-events/", views.scrape_events, name="scrape-events"),
+    # API endpoint to get the latest subjects
+    path('api/get-latest-subjects/', views.get_latest_subjects, name='get-latest-subjects'),
+    path('api/get-latest-events/', views.get_latest_events, name='get-latest-events'),
+    path('api/events/', views.get_events, name='get-events'),
+    path('api/events/student/<int:student_id>/', views.get_events_for_student_categories, name='get-events-for-student-categories'),
+    path('api/events/filter/', views.filter_events, name='filter-events'),
+    path('api/events/<int:event_id>/', views.get_event_by_id, name='get-event-by-id'),
+    path('api/events/purge-ended/', views.purge_ended_events, name='purge-ended-events'),
+    path('api/events/add/', views.add_event, name='add-event'),
+]

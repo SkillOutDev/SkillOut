@@ -1,0 +1,92 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Django
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.sqlite3
+*.db
+db.sqlite3
+
+# IDE & Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+*.launch
+
+# OS
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Node
+node_modules/
+
+# Static & Media files
+staticfiles/
+/static/
+/media/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Cypress
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+cypress/results/
+cypress.env.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+frontend/.vite/deps/_metadata.json
+frontend/.vite/deps/chunk-RZZXYUDO.js
+frontend/.vite/deps/chunk-RZZXYUDO.js.map
+frontend/.vite/deps/package.json
+frontend/.vite/deps/vue-router.js
+frontend/.vite/deps/vue-router.js.map
+frontend/.vite/deps/vue.js
+frontend/.vite/deps/vue.js.map
+
+# Scraped outputs
+scraped_text/
