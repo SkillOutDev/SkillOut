@@ -1789,13 +1789,28 @@ def filter_events(request):
 @extend_schema(
     responses={200: serializers.DictField(), 404: serializers.DictField()},
 )
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 def get_event_by_id(request, event_id):
-    """Return a single event by id with full details."""
+    """Return or delete a single event by id."""
     try:
         event = Event.objects.prefetch_related("categories").get(id=event_id)
     except Event.DoesNotExist:
         return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "DELETE":
+        deleted = {
+            "event_id": event.id,
+            "name": event.name,
+            "date": str(event.date),
+        }
+        event.delete()
+        return Response(
+            {
+                "message": "Event deleted successfully.",
+                "deleted_event": deleted,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     # Get student_id from query param or use default
     student_id = request.query_params.get("student_id")
