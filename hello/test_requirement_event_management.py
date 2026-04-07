@@ -1,13 +1,8 @@
 import json
 import sys
 import types
-from datetime import date, time
-from decimal import Decimal
 
 import pytest
-
-from hello.models import Category, Event
-
 
 POST_EVENT_ENDPOINT = "/api/events/add/"
 LIST_EVENTS_ENDPOINT = "/api/events/"
@@ -36,49 +31,58 @@ def _event_payload(**overrides):
 
 @pytest.mark.django_db
 def test_purge_ended_events_removes_expired_events(client):
-    Event.objects.create(
-        name="Senas renginys",
-        date=date(2020, 1, 1),
-        time=time(10, 0),
-        place="Vilnius",
-        short_description="Jau pasibaiges renginys",
-        price=Decimal("1.00"),
+    client.post(
+        POST_EVENT_ENDPOINT,
+        data=json.dumps(
+            _event_payload(
+                name="Senas renginys",
+                date="2020-01-01",
+                time="10:00",
+                short_description="Jau pasibaiges renginys",
+                price="1.00",
+            )
+        ),
+        content_type="application/json",
     )
-    Event.objects.create(
-        name="Ateities renginys",
-        date=date(2030, 1, 1),
-        time=time(10, 0),
-        place="Vilnius",
-        short_description="Dar nepasibaiges renginys",
-        price=Decimal("1.00"),
+    client.post(
+        POST_EVENT_ENDPOINT,
+        data=json.dumps(
+            _event_payload(
+                name="Ateities renginys",
+                date="2030-01-01",
+                time="10:00",
+                short_description="Dar nepasibaiges renginys",
+                price="1.00",
+            )
+        ),
+        content_type="application/json",
     )
 
     response = client.delete(PURGE_ENDPOINT)
 
     assert response.status_code == 200
-    assert Event.objects.filter(name="Senas renginys").count() == 0
-    assert Event.objects.filter(name="Ateities renginys").count() == 1
+    list_response = client.get(LIST_EVENTS_ENDPOINT)
+    names = [event["name"] for event in list_response.json()["events"]]
+    assert "Senas renginys" not in names
+    assert "Ateities renginys" in names
 
 
 @pytest.mark.django_db
 def test_get_event_by_id_returns_existing_event(client, monkeypatch):
-    event = Event.objects.create(
-        id=1,
-        name="Koncertas",
-        date=date(2026, 4, 5),
-        time=time(19, 0),
-        place="Vilnius",
-        short_description="Ilgas renginio aprasymas",
-        price=Decimal("12.50"),
+    create_response = client.post(
+        POST_EVENT_ENDPOINT,
+        data=json.dumps(_event_payload()),
+        content_type="application/json",
     )
+    event_id = create_response.json()["event_id"]
 
     monkeypatch.setitem(sys.modules, "ollama", _mock_ollama_module())
 
-    response = client.get(f"/api/events/{event.id}/")
+    response = client.get(f"/api/events/{event_id}/")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["event_id"] == 1
+    assert body["event_id"] == event_id
     assert body["name"] == "Koncertas"
 
 
@@ -100,18 +104,9 @@ def test_create_event_with_valid_payload(client):
     assert body["short_description"] == "Ilgas renginio aprasymas"
     assert body["price"] == "12.50"
 
-    created = Event.objects.get(name="Koncertas", date=date(2026, 4, 5))
-    assert created.time == time(19, 0)
-
 
 @pytest.mark.django_db
 def test_create_event_when_unique_name_date_time_combination(client):
-    assert Event.objects.filter(
-        name="Koncertas",
-        date=date(2026, 4, 5),
-        time=time(19, 0),
-    ).count() == 0
-
     response = client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload()),
@@ -119,37 +114,38 @@ def test_create_event_when_unique_name_date_time_combination(client):
     )
 
     assert response.status_code == 201
-    assert Event.objects.filter(
-        name="Koncertas",
-        date=date(2026, 4, 5),
-        time=time(19, 0),
-    ).count() == 1
+    list_response = client.get(LIST_EVENTS_ENDPOINT)
+    events = list_response.json()["events"]
+    assert any(
+        event["name"] == "Koncertas"
+        and event["date"] == "2026-04-05"
+        and event["time"] == "19:00"
+        for event in events
+    )
 
 
 @pytest.mark.django_db
 def test_get_events_returns_all_events_with_required_fields(client):
-    music = Category.objects.create(name="Muzika")
-    art = Category.objects.create(name="Menas")
-
-    event_1 = Event.objects.create(
-        name="Koncertas",
-        date=date(2026, 4, 5),
-        time=time(19, 0),
-        place="Vilnius",
-        short_description="Ilgas renginio aprasymas",
-        price=Decimal("12.50"),
+    client.post(
+        POST_EVENT_ENDPOINT,
+        data=json.dumps(_event_payload(name="Koncertas", categories=["Muzika"])),
+        content_type="application/json",
     )
-    event_1.categories.add(music)
-
-    event_2 = Event.objects.create(
-        name="Paroda",
-        date=date(2026, 4, 10),
-        time=time(10, 0),
-        place="Kaunas",
-        short_description="Moderniosios meno paroda",
-        price=Decimal("5.00"),
+    client.post(
+        POST_EVENT_ENDPOINT,
+        data=json.dumps(
+            _event_payload(
+                name="Paroda",
+                date="2026-04-10",
+                time="10:00",
+                place="Kaunas",
+                short_description="Moderniosios meno paroda",
+                price="5.00",
+                categories=["Menas"],
+            )
+        ),
+        content_type="application/json",
     )
-    event_2.categories.add(art)
 
     response = client.get(LIST_EVENTS_ENDPOINT)
 
@@ -184,7 +180,13 @@ def test_create_duplicate_event_returns_conflict_requirement(client):
     # Requirement expects 409 and no new event.
     # This test intentionally captures that business rule.
     assert response.status_code == 409
-    assert Event.objects.filter(name="Koncertas", date=date(2026, 4, 5)).count() == 1
+    list_response = client.get(LIST_EVENTS_ENDPOINT)
+    duplicates = [
+        event
+        for event in list_response.json()["events"]
+        if event["name"] == "Koncertas" and event["date"] == "2026-04-05"
+    ]
+    assert len(duplicates) == 1
 
 
 @pytest.mark.django_db
