@@ -1,0 +1,37 @@
+name: Cypress SD-59 Tests
+
+on:
+  push:
+    branches:
+      - SD-59-as-kaip-studentas-noriu-pasirinkti-studiju-dalyk
+  pull_request:
+    branches:
+      - SD-59-as-kaip-studentas-noriu-pasirinkti-studiju-dalyk
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Cypress Gherkin tests
+        run: npm run cy:run:gherkin
+
+      - name: Archive Cypress screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-sd-59-screenshots
+          path: cypress/screenshots
+          if-no-files-found: ignore

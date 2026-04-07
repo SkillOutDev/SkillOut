@@ -23,3 +23,12 @@
 //
 // -- This will overwrite an existing command --
 // Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
+
+Cypress.Commands.add("getByTestId", (value, ...args) => {
+	return cy.get(`[data-testid="${value}"]`, ...args);
+});
+
+Cypress.Commands.add("containsInsensitive", (selector, text) => {
+	const escaped = Cypress._.escapeRegExp(text);
+	return cy.contains(selector, new RegExp(escaped, "i"));
+});

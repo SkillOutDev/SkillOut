@@ -11,3 +11,4 @@ export default defineConfig({
     },
   },
 });
+// noop commit marker

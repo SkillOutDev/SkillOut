@@ -1,0 +1,5 @@
+Semester 1 | Diskrečioji matematika | Stars: 3
+Semester 1 | Kompiuterių architektūra | Stars: 3
+Semester 1 | Matematika programų sistemoms I/III d. | Stars: 1
+Semester 1 | Praktinė informatika | Stars: 5
+Semester 1 | Procedūrinis programavimas | Stars: 2

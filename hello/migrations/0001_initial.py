@@ -46,3 +46,4 @@ class Migration(migrations.Migration):
             field=models.ManyToManyField(related_name='students', through='hello.StudentSubject', to='hello.subject'),
         ),
     ]
+# noop commit marker

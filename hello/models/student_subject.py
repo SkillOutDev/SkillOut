@@ -18,3 +18,4 @@ class StudentSubject(models.Model):
 
     def __str__(self):
         return f"{self.student} - {self.subject} ({self.interest})"
+# noop commit marker

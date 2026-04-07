@@ -1,5 +1,30 @@
 {
+  "name": "skillout",
+  "version": "1.0.0",
+  "description": "\"# SkillOut\"",
+  "main": "cypress.config.js",
+  "scripts": {
+    "test": "npm run cy:run",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:gherkin": "cypress run --spec \"cypress/e2e/**/*.feature\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alomika/SkillOut.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Alomika/SkillOut/issues"
+  },
+  "homepage": "https://github.com/Alomika/SkillOut#readme",
   "devDependencies": {
-    "cypress": "^15.13.0"
+    "@badeball/cypress-cucumber-preprocessor": "^23.2.1",
+    "@bahmutov/cypress-esbuild-preprocessor": "^2.2.4",
+    "cypress": "^15.13.0",
+    "esbuild": "^0.25.10"
   }
 }

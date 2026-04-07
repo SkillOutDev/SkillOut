@@ -1,18 +1,17 @@
 <template>
   <main class="page">
     <section class="card">
-      <h1>Submit a URL</h1>
-      <p>Enter a valid URL of your university programme page and click submit.</p>
+      <h1>Enter URL</h1>
+      <p>Temporary mode: submit uses cached scraped_text/latest_scrape.txt for AI extraction.</p>
 
       <form @submit.prevent="handleSubmit" class="url-form">
         <div class="field">
-          <label for="urlInput">URL</label>
+          <label for="urlInput">Enter URL</label>
           <input
             id="urlInput"
             v-model.trim="url"
             type="url"
-            placeholder="https://vilniustech.lt/stojantiesiems/studiju-programos/..."
-            required
+            placeholder="Optional: original source URL for reference"
           />
         </div>
 
@@ -54,13 +53,60 @@
             {{ loading ? "Submitting..." : "Submit" }}
           </button>
         </div>
+
+        <p v-if="loading" class="status-message">
+          Reading latest_scrape.txt and extracting subjects. This can take up to ~2 minutes.
+        </p>
       </form>
 
       <p v-if="submittedInfo" class="result">
         Submitted: {{ submittedInfo.url }} <br>
         <small>(Semesters: {{ submittedInfo.from }} - {{ submittedInfo.to }})</small>
         <br>
-        <small v-if="submittedInfo.file">Saved to: {{ submittedInfo.file }}</small>
+        <small v-if="submittedInfo.source">Source: {{ submittedInfo.source }}</small>
+      </p>
+
+      <section v-if="subjectRows.length" class="subjects-section">
+        <h2>Subjects and Ratings</h2>
+        <table class="subjects-table">
+          <thead>
+            <tr>
+              <th>Semester</th>
+              <th>Subject</th>
+              <th>Rating</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in subjectRows" :key="row.id">
+              <td>Semester {{ row.semester }}</td>
+              <td>{{ row.subject }}</td>
+              <td>
+                <button
+                  v-for="star in 5"
+                  :key="`${row.id}-${star}`"
+                  type="button"
+                  class="star-btn"
+                  :class="{ active: (ratings[row.id] || 0) >= star }"
+                  @click="setRating(row.id, star)"
+                >
+                  ★
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="subjectRows.length" class="save-ratings-wrapper">
+          <button type="button" class="save-btn" :disabled="savingRatings" @click="saveRatings">
+            {{ savingRatings ? "Saving..." : "Submit Ratings" }}
+          </button>
+          <p v-if="saveMessage" class="save-message">{{ saveMessage }}</p>
+          <p v-if="saveError" class="error-message">{{ saveError }}</p>
+        </div>
+      </section>
+
+      <p v-else-if="submittedInfo" class="result-empty">
+        No cached subjects found for selected semesters.
       </p>
 
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
@@ -77,18 +123,60 @@ export default {
       fromSemester: 1,
       toSemester: 1,
       submittedInfo: null,
+      subjectRows: [],
+      ratings: {},
       loading: false,
       errorMessage: "",
+      savingRatings: false,
+      saveMessage: "",
+      saveError: "",
     };
   },
   methods: {
+    setRating(rowId, stars) {
+      this.ratings = {
+        ...this.ratings,
+        [rowId]: stars,
+      };
+    },
+    async saveRatings() {
+      this.savingRatings = true;
+      this.saveMessage = "";
+      this.saveError = "";
+      try {
+        const rows = this.subjectRows.map((row) => ({
+          semester: row.semester,
+          subject: row.subject,
+          stars: this.ratings[row.id] || 0,
+        }));
+        const response = await fetch("/api/save-subject-ratings/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          this.saveError = data.error || "Failed to save ratings.";
+        } else {
+          this.saveMessage = `Ratings saved! (${data.count} subject${data.count !== 1 ? 's' : ''})`;
+        }
+      } catch (err) {
+        this.saveError = err.message || "Network error while saving ratings.";
+      } finally {
+        this.savingRatings = false;
+      }
+    },
     async handleSubmit() {
       if (this.fromSemester <= this.toSemester) {
         this.errorMessage = "";
         this.loading = true;
+        let timeoutId;
 
         try {
-          const response = await fetch("/api/scrape-text/", {
+          const controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), 5000);
+
+          const response = await fetch("/api/latest-subjects-fast/", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -98,9 +186,26 @@ export default {
               fromSemester: this.fromSemester,
               toSemester: this.toSemester,
             }),
+            signal: controller.signal,
           });
 
-          const data = await response.json();
+          clearTimeout(timeoutId);
+
+          const rawBody = await response.text();
+          let data = {};
+          try {
+            data = rawBody ? JSON.parse(rawBody) : {};
+          } catch {
+            if (!response.ok) {
+              const snippet = rawBody.slice(0, 120).replace(/\s+/g, " ").trim();
+              throw new Error(
+                `Server returned non-JSON response (${response.status}). ${snippet || "No response body."}`
+              );
+            }
+
+            throw new Error("Server returned invalid JSON response.");
+          }
+
           if (!response.ok) {
             throw new Error(data.error || "Request failed");
           }
@@ -108,14 +213,27 @@ export default {
           this.$router.push("/subjects");
           
           this.submittedInfo = {
-            url: this.url,
+            url: data.url || this.url || "latest_scrape.txt",
             from: this.fromSemester,
             to: this.toSemester,
-            file: data.file,
+            source: data.source,
           };
+          this.subjectRows = Array.isArray(data.rows) ? data.rows : [];
+          this.ratings = Object.fromEntries(
+            this.subjectRows.map((row) => [row.id, Number.isInteger(row.stars) ? row.stars : 0])
+          );
         } catch (error) {
-          this.errorMessage = error.message || "Failed to submit URL.";
+          if (error.name === "AbortError") {
+            this.errorMessage = "Cached load timed out. Please try again.";
+          } else {
+            this.errorMessage = error.message || "Failed to submit URL.";
+          }
+          this.subjectRows = [];
+          this.ratings = {};
         } finally {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
           this.loading = false;
         }
       }
@@ -223,8 +341,77 @@ button:disabled {
   word-break: break-all;
 }
 
+.status-message {
+  color: #1f2937;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.subjects-section {
+  margin-top: 1rem;
+  text-align: left;
+}
+
+.subjects-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #f8fbff;
+  border: 1px solid #d7e4f0;
+}
+
+.subjects-table th,
+.subjects-table td {
+  border-bottom: 1px solid #e6edf5;
+  padding: 0.55rem;
+}
+
+.subjects-table th {
+  background: #eef4fb;
+}
+
+.star-btn {
+  border: none;
+  background: transparent;
+  color: #c2c8cf;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.1rem;
+}
+
+.star-btn.active {
+  color: #ffb300;
+}
+
+.result-empty {
+  margin-top: 1rem;
+  color: #7a5c00;
+  font-weight: 600;
+}
+
 .field {
   flex: 1;
   min-width: 0;
 }
+
+.save-ratings-wrapper {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.save-btn {
+  padding: 0.65rem 2rem;
+  background: #2e7d32;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #1b5e20;
+}
+
+.save-message {
+  color: #2e7d32;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
 </style>
+<!-- noop commit marker -->
