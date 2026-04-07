@@ -956,17 +956,6 @@ def scrape_text(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    # prompt = (
-    #     "Extract only study subject names from semesters "
-    #     f"{from_semester} to {to_semester} from the provided webpage text. "
-    #     f"That means study subjects are between text for {from_semester} semester to {to_semester + 1} semester. "
-    #     "Do not translate or modify original subject text. "
-    #     "Return strict JSON only in this format: "
-    #     '{"study_subjects": ["subject 1", "subject 2"]}. '
-    #     "No markdown, no explanation.\n\n"
-    #     f"Webpage text:\n{text}"
-    # )
-
     prompt = (
     "Task: Extract study subjects only from selected semesters.\n"
     f"Selected semesters: {from_semester} to {to_semester} (inclusive).\n\n"

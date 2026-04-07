@@ -135,6 +135,85 @@ npm run build
 npm run serve
 ```
 
+Testing:
+
+```powershell
+# Django tests
+python manage.py test
+
+# Cypress (install once in project root)
+npm install
+
+# Open Cypress UI
+npx cypress open
+
+# Run all Cypress E2E tests (headless)
+npx cypress run
+
+# Run SD-68 spec only
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js"
+```
+
+## 4) Testing Setup (Django + Cypress)
+
+This project currently uses:
+
+- Django unit/integration tests via `python manage.py test`
+- Cypress end-to-end UI tests from `cypress/e2e/`
+
+### Backend Tests (Django)
+
+Run from repository root with venv activated:
+
+```powershell
+python manage.py test
+```
+
+### UI Tests (Cypress + Vue)
+
+1. Install Cypress dependencies in repository root (once):
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut
+npm install
+```
+
+2. Start frontend dev server in a separate terminal:
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut\frontend
+npm run dev
+```
+
+3. Run Cypress from repository root:
+
+```powershell
+cd C:\Users\legat\Desktop\SkillOut
+npx cypress open
+```
+
+or headless:
+
+```powershell
+npx cypress run
+```
+
+Run only SD-68 events test:
+
+```powershell
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js"
+```
+
+### Port Note for Cypress
+
+Cypress baseUrl is set to `http://localhost:5173` in `cypress.config.js`.
+
+If Vite starts on a different port (for example `5174`), run Cypress with an override:
+
+```powershell
+npx cypress run --spec "cypress/e2e/sd-68-events.cy.js" --config baseUrl=http://localhost:5174
+```
+
 ## API Endpoints
 
 Base URL: `http://127.0.0.1:8000`
