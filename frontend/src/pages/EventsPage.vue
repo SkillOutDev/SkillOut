@@ -33,11 +33,15 @@
         </div>
       </div>
 
-      <p v-if="loading" class="state">Loading events...</p>
-      <p v-else-if="error" class="error-message">{{ error }}</p>
-      <p v-else class="state">Total: {{ total }}</p>
+      <div class="filter-actions">
+        <button type="button" class="secondary" @click="clearFilters">Išvalyti filtrus</button>
+      </div>
 
-      <ul v-if="!loading && !error && events.length" class="events-list">
+      <p v-if="loading" class="state">Loading events...</p>
+      <p v-if="error" class="error-message">{{ error }}</p>
+      <p v-if="!loading" class="state">Total: {{ total }}</p>
+
+      <ul v-if="!loading && events.length" class="events-list">
         <li v-for="event in events" :key="event.event_id" class="event-item" @click="openModal(event)">
           <h2>{{ event.name }}</h2>
           <p><strong>Date:</strong> {{ event.date }} {{ event.time }}</p>
@@ -91,67 +95,111 @@ export default {
   },
   methods: {
     formatCategories(categories) {
-    return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
-  },
-  async openModal(event) {
-    console.log("Opening modal for event", event);
-    this.selectedEvent = event;
-    this.modalVisible = true;
-    try {
-      const response = await fetch(`/api/events/${event.event_id || event.id}/`);
-      const data = await response.json();
-      console.log("Fetched event details", data);
-      if (response.ok) {
-        this.selectedEvent = data;
-      } else {
+      return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
+    },
+    validateFilters() {
+      const { minPrice, maxPrice, startDate, endDate } = this.filters;
+
+      if (minPrice !== "" && maxPrice !== "" && Number(minPrice) > Number(maxPrice)) {
+        this.error = "Klaida: maksimali kaina negali būti mažesnė už minimalią.";
+        this.filters.minPrice = "";
+        this.filters.maxPrice = "";
+        return true;
+      }
+
+      if (startDate && endDate && startDate > endDate) {
+        this.error = "Klaida: pabaigos data negali būti ankstesnė už pradžios datą.";
+        this.filters.startDate = "";
+        this.filters.endDate = "";
+        return true;
+      }
+
+      this.error = "";
+      return true;
+    },
+    async openModal(event) {
+      console.log("Opening modal for event", event);
+      this.selectedEvent = event;
+      this.modalVisible = true;
+      try {
+        const response = await fetch(`/api/events/${event.event_id || event.id}/`);
+        const data = await response.json();
+        console.log("Fetched event details", data);
+        if (response.ok) {
+          this.selectedEvent = data;
+        } else {
+          this.selectedEvent = { ...event, ai_sentence: 'Nepavyko gauti DI sakinio.' };
+        }
+      } catch (e) {
+        console.log("Fetch error", e);
         this.selectedEvent = { ...event, ai_sentence: 'Nepavyko gauti DI sakinio.' };
       }
-    } catch (e) {
-      console.log("Fetch error", e);
-      this.selectedEvent = { ...event, ai_sentence: 'Nepavyko gauti DI sakinio.' };
-    }
-  },
-  closeModal() {
-    this.modalVisible = false;
-    this.selectedEvent = null;
-  },
-  async loadEvents() {
-    this.loading = true;
-    this.error = "";
-    try {
-      const hasFilters = this.filters.city || this.filters.minPrice || this.filters.maxPrice || this.filters.startDate || this.filters.endDate;
-      let url = "/api/events/";
-      if (hasFilters) {
-        const params = new URLSearchParams();
-        if (this.filters.city) params.append('city', this.filters.city);
-        if (this.filters.minPrice) params.append('min_price', this.filters.minPrice);
-        if (this.filters.maxPrice) params.append('max_price', this.filters.maxPrice);
-        if (this.filters.startDate) params.append('start_date', this.filters.startDate);
-        if (this.filters.endDate) params.append('end_date', this.filters.endDate);
-        url = `/api/events/filter/?${params.toString()}`;
-      }
-      const response = await fetch(url);
-      const data = await response.json().catch(() => ({}));
+    },
+    closeModal() {
+      this.modalVisible = false;
+      this.selectedEvent = null;
+    },
+    async loadEvents() {
+      this.loading = true;
+      this.error = "";
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load events.");
+      if (!this.validateFilters()) {
+        this.loading = false;
+        return;
       }
 
-      this.events = Array.isArray(data.events) ? data.events : [];
-      this.total = Number.isInteger(data.total) ? data.total : this.events.length;
-    } catch (error) {
-      this.error = error.message || "Failed to load events.";
-    } finally {
-      this.loading = false;
-    }
+      try {
+        const hasFilters =
+          this.filters.city ||
+          this.filters.minPrice ||
+          this.filters.maxPrice ||
+          this.filters.startDate ||
+          this.filters.endDate;
+
+        let url = "/api/events/";
+        if (hasFilters) {
+          const params = new URLSearchParams();
+          if (this.filters.city) params.append("city", this.filters.city);
+          if (this.filters.minPrice) params.append("min_price", this.filters.minPrice);
+          if (this.filters.maxPrice) params.append("max_price", this.filters.maxPrice);
+          if (this.filters.startDate) params.append("start_date", this.filters.startDate);
+          if (this.filters.endDate) params.append("end_date", this.filters.endDate);
+          url = `/api/events/filter/?${params.toString()}`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to load events.");
+        }
+
+        this.events = Array.isArray(data.events) ? data.events : [];
+        this.total = Number.isInteger(data.total) ? data.total : this.events.length;
+      } catch (error) {
+        this.error = error.message || "Failed to load events.";
+      } finally {
+        this.loading = false;
+      }
+    },
+    applyFilters() {
+      this.loadEvents();
+    },
+    clearFilters() {
+      this.filters = {
+        city: "",
+        minPrice: "",
+        maxPrice: "",
+        startDate: "",
+        endDate: "",
+      };
+      this.error = "";
+      this.loadEvents();
+    },
   },
-  applyFilters() {
-    this.loadEvents();
-  },
-},
   async mounted() {
     await this.loadEvents();
-  }
+  },
 };
 </script>
 
@@ -161,6 +209,7 @@ export default {
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #f3f8ff 0%, #e3f2eb 100%);
+}
 
 .filters {
   display: flex;
@@ -190,8 +239,12 @@ export default {
   border-radius: 4px;
   font-size: 1rem;
 }
-  padding: 1rem;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-bottom: 1rem;
 }
 
 .card {
@@ -201,6 +254,11 @@ export default {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
   padding: 1.5rem;
   text-align: center;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+button.secondary {
+  background: #6b7280;
 }
 
 h1 {
