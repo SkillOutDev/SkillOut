@@ -1202,9 +1202,77 @@ class FilterEventsTests(TestCase):
 		self.assertIn("start_time", response.json()["error"])
 
 	def test_no_filters_returns_all(self):
+		"""No filters applied should return all events."""
 		response = self.client.get("/api/events/filter/")
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()["total"], 2)
+
+	def test_filter_by_price_range(self):
+		"""Filter events by price range (min_price and max_price)."""
+		response = self.client.get("/api/events/filter/?min_price=0&max_price=50")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["total"], 2)
+		names = [e["name"] for e in data["events"]]
+		self.assertIn("Free Concert", names)
+		self.assertIn("Paid Seminar", names)
+
+	def test_filter_by_city(self):
+		"""Filter events by city location."""
+		response = self.client.get("/api/events/filter/?city=Vilnius")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Free Concert", names)
+		self.assertNotIn("Paid Seminar", names)
+
+	def test_filter_by_time_range(self):
+		"""Filter events by time range (start_time and end_time)."""
+		response = self.client.get("/api/events/filter/?start_time=09:00&end_time=11:00")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Paid Seminar", names)  # 10:00
+		self.assertNotIn("Free Concert", names)  # 19:00
+
+	def test_filter_combined_price_and_city(self):
+		"""Filter by both price and city."""
+		response = self.client.get("/api/events/filter/?min_price=0&max_price=10&city=Vilnius")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Free Concert", names)
+
+	def test_filter_combined_price_and_time(self):
+		"""Filter by both price and time."""
+		response = self.client.get("/api/events/filter/?min_price=0&max_price=100&start_time=09:00&end_time=11:00")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Paid Seminar", names)
+
+	def test_filter_combined_city_and_time(self):
+		"""Filter by both city and time."""
+		response = self.client.get("/api/events/filter/?city=Vilnius&start_time=15:00")
+		self.assertEqual(response.status_code, 200)
+		names = [e["name"] for e in response.json()["events"]]
+		self.assertIn("Free Concert", names)
+
+	def test_filter_no_matching_results(self):
+		"""Filter with no matches should return empty list."""
+		response = self.client.get("/api/events/filter/?min_price=1000")
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data["total"], 0)
+		self.assertEqual(len(data["events"]), 0)
+
+	def test_rejects_inverted_price_range(self):
+		"""Inverted price range should return 400 error."""
+		response = self.client.get("/api/events/filter/?min_price=100&max_price=10")
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("error", response.json())
+
+	def test_rejects_inverted_time_range(self):
+		"""Inverted time range should return 400 error."""
+		response = self.client.get("/api/events/filter/?start_time=20:00&end_time=09:00")
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("error", response.json())
 
 
 # ---------------------------------------------------------------------------
