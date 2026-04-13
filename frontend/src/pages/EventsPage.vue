@@ -14,12 +14,12 @@
 
         <div class="filter-group">
           <label for="minPrice">Kaina nuo:</label>
-          <input type="number" id="minPrice" v-model="filters.minPrice" @input="applyFilters" placeholder="0">
+          <input type="number" id="minPrice" v-model="filters.minPrice" @blur="applyFilters" placeholder="0">
         </div>
 
         <div class="filter-group">
           <label for="maxPrice">Kaina iki:</label>
-          <input type="number" id="maxPrice" v-model="filters.maxPrice" @input="applyFilters" placeholder="1000">
+          <input type="number" id="maxPrice" v-model="filters.maxPrice" @blur="applyFilters" placeholder="1000">
         </div>
 
         <div class="filter-group">
@@ -102,16 +102,14 @@ export default {
 
       if (minPrice !== "" && maxPrice !== "" && Number(minPrice) > Number(maxPrice)) {
         this.error = "Klaida: maksimali kaina negali būti mažesnė už minimalią.";
-        this.filters.minPrice = "";
-        this.filters.maxPrice = "";
-        return true;
+        this.events = [];
+        return false;
       }
 
       if (startDate && endDate && startDate > endDate) {
         this.error = "Klaida: pabaigos data negali būti ankstesnė už pradžios datą.";
-        this.filters.startDate = "";
-        this.filters.endDate = "";
-        return true;
+        this.events = [];
+        return false;
       }
 
       this.error = "";
@@ -141,12 +139,13 @@ export default {
     },
     async loadEvents() {
       this.loading = true;
-      this.error = "";
 
       if (!this.validateFilters()) {
         this.loading = false;
         return;
       }
+
+      this.error = "";
 
       try {
         const hasFilters =
@@ -174,7 +173,7 @@ export default {
           throw new Error(data.error || "Failed to load events.");
         }
 
-        this.events = Array.isArray(data.events) ? data.events : [];
+        this.events = Array.isArray(data.events) ? [...data.events] : [];
         this.total = Number.isInteger(data.total) ? data.total : this.events.length;
       } catch (error) {
         this.error = error.message || "Failed to load events.";
