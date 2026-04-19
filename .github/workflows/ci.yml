@@ -8,6 +8,8 @@ on:
       - "SD-68*-*"
       - "SD-59*-*"
       - "SD-60*-*"
+      - "SD-61*-*"
+      - "SD-57*-*"
     paths:
       - frontend/**
       - cypress/**
