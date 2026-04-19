@@ -98,6 +98,9 @@ export default {
       return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
     },
     formatPrice(price) {
+      if (price === null || price === undefined || String(price).trim() === "") {
+        return "-";
+      }
       const numericValue = Number(String(price).replace(",", ".").trim());
       if (!Number.isFinite(numericValue)) {
         return "-";
