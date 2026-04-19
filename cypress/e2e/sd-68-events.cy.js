@@ -49,7 +49,7 @@ describe('Events Page', () => {
       cy.contains('h2', 'Music Night')
       cy.contains(/^Date:/).parent().invoke('text').should('match', /Date:\s\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/)
       cy.contains(/^Place:/).parent().should('contain.text', 'Kaunas')
-      cy.contains(/^Price:/).parent().should('contain.text', '5,50 € ')
+      cy.contains(/^Price:/).parent().should('contain.text', '5,50 €')
       cy.contains(/^Categories:/).parent().should('contain.text', 'Music')
     })
 

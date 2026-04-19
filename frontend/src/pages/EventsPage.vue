@@ -42,11 +42,11 @@
       <p v-if="!loading" class="state">Total: {{ total }}</p>
 
       <ul v-if="!loading && events.length" class="events-list">
-        <li v-for="event in events" :key="event.event_id" class="event-item" @click="openModal(event)">
+        <li v-for="event in events.filter((item) => String(item?.name || '').trim() && String(item?.date || '').trim())" :key="event.event_id" class="event-item" @click="openModal(event)">
           <h2>{{ event.name }}</h2>
           <p><strong>Date:</strong> {{ event.date }} {{ event.time }}</p>
-          <p><strong>Place:</strong> {{ event.place }}</p>
-          <p><strong>Price:</strong> {{ event.price }}</p>
+          <p><strong>Place:</strong> {{ formatPlace(event.place) }}</p>
+          <p><strong>Price:</strong> {{ formatPrice(event.price) }}</p>
           <p><strong>Categories:</strong> {{ formatCategories(event.categories) }}</p>
         </li>
       </ul>
@@ -94,8 +94,23 @@ export default {
     };
   },
   methods: {
+    formatPlace(place) {
+      const value = String(place || "").trim();
+      return value || "-";
+    },
     formatCategories(categories) {
       return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
+    },
+    formatPrice(price) {
+      if (price === null || price === undefined || String(price).trim() === "") {
+        return "-";
+      }
+      const numericValue = Number(String(price).replace(",", ".").trim());
+      if (!Number.isFinite(numericValue)) {
+        return "-";
+      }
+
+      return `${numericValue.toFixed(2).replace(".", ",")} €`;
     },
     validateFilters() {
       const { minPrice, maxPrice, startDate, endDate } = this.filters;
