@@ -30,6 +30,9 @@
 
         <div v-else class="empty-warning">
           <div class="warning-icon">⚠️</div>
+          <div class="warning-text">
+            <strong>List is empty! Add subjects below or Go Back to try and detect subjects again.</strong>
+          </div>
         </div>
 
         <div class="add-subject-container">
