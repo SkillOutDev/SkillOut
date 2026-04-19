@@ -42,7 +42,7 @@
       <p v-if="!loading" class="state">Total: {{ total }}</p>
 
       <ul v-if="!loading && events.length" class="events-list">
-        <li v-for="event in events" :key="event.event_id" class="event-item" @click="openModal(event)">
+        <li v-for="event in events.filter((item) => String(item?.name || '').trim())" :key="event.event_id" class="event-item" @click="openModal(event)">
           <h2>{{ event.name }}</h2>
           <p><strong>Date:</strong> {{ event.date }} {{ event.time }}</p>
           <p><strong>Place:</strong> {{ event.place }}</p>
