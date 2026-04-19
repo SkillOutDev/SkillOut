@@ -46,7 +46,7 @@
           <h2>{{ event.name }}</h2>
           <p><strong>Date:</strong> {{ event.date }} {{ event.time }}</p>
           <p><strong>Place:</strong> {{ event.place }}</p>
-          <p><strong>Price:</strong> {{ event.price }}</p>
+          <p><strong>Price:</strong> {{ formatPrice(event.price) }}</p>
           <p><strong>Categories:</strong> {{ formatCategories(event.categories) }}</p>
         </li>
       </ul>
@@ -96,6 +96,18 @@ export default {
   methods: {
     formatCategories(categories) {
       return Array.isArray(categories) && categories.length ? categories.join(", ") : "-";
+    },
+    formatPrice(price) {
+      if (price === null || price === undefined || String(price).trim() === "") {
+        return "-";
+      }
+
+      const numericValue = Number(String(price).replace(",", ".").trim());
+      if (!Number.isFinite(numericValue)) {
+        return "-";
+      }
+
+      return `${numericValue.toFixed(2).replace(".", ",")} €`;
     },
     validateFilters() {
       const { minPrice, maxPrice, startDate, endDate } = this.filters;
