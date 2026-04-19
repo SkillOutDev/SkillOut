@@ -31,8 +31,7 @@
         <div v-else class="empty-warning">
           <div class="warning-icon">⚠️</div>
           <div class="warning-text">
-            <strong>Sąrašas tuščias!</strong>
-            <p>Be studijų dalykų renginių paieška negalima. Prašome pridėti bent vieną dalyką žemiau arba pradėti scrapinimą iš naujo.</p>
+            <strong>List is empty! Add subjects below or Go Back to try and detect subjects again.</strong>
           </div>
         </div>
 
