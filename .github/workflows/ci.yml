@@ -26,6 +26,10 @@ on:
       - frontend/package-lock.json
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   cypress-ui:
     runs-on: ubuntu-latest
@@ -34,6 +38,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,3 +77,13 @@ jobs:
             cypress/screenshots
             cypress/videos
           if-no-files-found: ignore
+      
+      - name: SonarCloud Scan
+        if: always()
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=skilloutdev
+            -Dsonar.projectKey=SkillOutDev_SkillOut
