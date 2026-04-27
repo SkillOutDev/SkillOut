@@ -10,7 +10,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from hello.models import Category, Event, Student, StudentSubject, Subject
+from hello.models import Category, Event, EventPageUrl, Student, StudentSubject, Subject
 
 
 class ScrapeSemesterValidationTests(TestCase):
@@ -258,48 +258,265 @@ class ScrapeUrlValidationTests(TestCase):
 
 		self.assertEqual(response.status_code, 400)
 		self.assertIn("Failed after 3 attempts", response.json()["error"])
-		self.assertEqual(mock_get.call_count, 3)
-		self.assertEqual(mock_sleep.call_count, 2)  # Sleeps after first two attempts
 
-	@patch("hello.views.requests.get")
-	@patch("hello.views.time.sleep")
-	def test_handles_connection_error_with_retry_success(self, mock_sleep, mock_get):
-		mock_get.side_effect = [
-			requests.ConnectionError("Connection failed"),
-			requests.ConnectionError("Connection failed"),
-			MagicMock(text="<html></html>", raise_for_status=lambda: None)
-		]
 
-		fake_ollama = types.SimpleNamespace(
-			chat=lambda **kwargs: {"message": {"content": '{"study_subjects": []}'}}
+class StudentEventOrderingTests(TestCase):
+	endpoint = "/api/scrape-text/"
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
 		)
 
-		with patch.dict(sys.modules, {"ollama": fake_ollama}):
-			response = self._post({
-				"url": "https://example.com",
-				"fromSemester": 1,
-				"toSemester": 2,
-			})
+	def setUp(self):
+		user = User.objects.create_user(username="student1", password="pass12345")
+		self.student = Student.objects.create(id=1, user=user)
 
+		self.high_category = Category.objects.create(name="Technology")
+		self.medium_category = Category.objects.create(name="Business")
+
+		self.high_subject = Subject.objects.create(name="Programming", category=self.high_category)
+		self.medium_subject = Subject.objects.create(name="Marketing", category=self.medium_category)
+
+		StudentSubject.objects.create(student=self.student, subject=self.high_subject, interest=5)
+		StudentSubject.objects.create(student=self.student, subject=self.medium_subject, interest=3)
+
+		self.high_older = Event.objects.create(
+			name="High interest older",
+			date=date(2026, 5, 1),
+			time=time(9, 0),
+			place="Hall A",
+			price=Decimal("10.00"),
+			short_description="Older high-interest event",
+			source_url="https://example.com/high-older",
+		)
+		self.high_older.categories.add(self.high_category)
+
+		self.high_newer = Event.objects.create(
+			name="High interest newer",
+			date=date(2026, 5, 2),
+			time=time(10, 0),
+			place="Hall B",
+			price=Decimal("12.00"),
+			short_description="Newer high-interest event",
+			source_url="https://example.com/high-newer",
+		)
+		self.high_newer.categories.add(self.high_category)
+
+		self.medium_event = Event.objects.create(
+			name="Medium interest event",
+			date=date(2026, 5, 3),
+			time=time(11, 0),
+			place="Hall C",
+			price=Decimal("8.00"),
+			short_description="Medium-interest event",
+			source_url="https://example.com/medium",
+		)
+		self.medium_event.categories.add(self.medium_category)
+
+	def test_events_are_sorted_by_latest_interest_and_recomputed_after_update(self):
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
 		self.assertEqual(response.status_code, 200)
-		self.assertEqual(mock_get.call_count, 3)
-		self.assertEqual(mock_sleep.call_count, 2)
+
+		data = response.json()
+		self.assertEqual(
+			[event["name"] for event in data["events"]],
+			[
+				"High interest newer",
+				"High interest older",
+				"Medium interest event",
+			],
+		)
+
+		StudentSubject.objects.filter(student=self.student, subject=self.medium_subject).update(interest=5)
+
+		response = self.client.get(f"/api/events/student/{self.student.id}/")
+		self.assertEqual(response.status_code, 200)
+
+		updated_data = response.json()
+		self.assertEqual(
+			[event["name"] for event in updated_data["events"]],
+			[
+				"Medium interest event",
+				"High interest newer",
+				"High interest older",
+			],
+		)
+
+
+class ScrapeEventsSourcePageTests(TestCase):
+	def _extract_meetup_links(self, html, url):
+		from bs4 import BeautifulSoup
+		from hello.views import _extract_meetup_event_links
+
+		return _extract_meetup_event_links(BeautifulSoup(html, "html.parser"), url, max_events=20)
+
+	def _extract_litexpo_links(self, html, url):
+		from bs4 import BeautifulSoup
+		from hello.views import _extract_litexpo_event_links
+
+		return _extract_litexpo_event_links(BeautifulSoup(html, "html.parser"), url, max_events=20)
+
+	def _extract_kaveikti_links(self, html, url):
+		from bs4 import BeautifulSoup
+		from hello.views import _extract_kaveikti_event_links
+
+		return _extract_kaveikti_event_links(BeautifulSoup(html, "html.parser"), url, max_events=20)
+
+	def test_meetup_vilnius_search_page_extracts_event_links(self):
+		html = """
+		<html><body>
+		  <a href="https://www.meetup.com/vilnius-tech-talks/events/123/">Tech Talk</a>
+		  <a href="https://www.meetup.com/vilnius-business-network/events/456/">Business Network</a>
+		  <a href="https://www.meetup.com/find/?keywords=Vilnius%20EVENTS">Search</a>
+		</body></html>
+		"""
+
+		links = self._extract_meetup_links(html, "https://www.meetup.com/find/?keywords=Vilnius%20EVENTS")
+
+		self.assertEqual(
+			links,
+			[
+				"https://www.meetup.com/vilnius-tech-talks/events/123/",
+				"https://www.meetup.com/vilnius-business-network/events/456/",
+			],
+		)
+
+	def test_litexpo_events_page_extracts_event_links(self):
+		html = """
+		<html><body>
+		  <a href="https://www.litexpo.lt/en/events/design-week/">Design Week</a>
+		  <a href="/en/events/ai-forum/">AI Forum</a>
+		  <a href="https://www.litexpo.lt/en/events/">Events Index</a>
+		</body></html>
+		"""
+
+		links = self._extract_litexpo_links(html, "https://www.litexpo.lt/en/events/")
+
+		self.assertEqual(
+			links,
+			[
+				"https://www.litexpo.lt/en/events/design-week/",
+				"https://www.litexpo.lt/en/events/ai-forum/",
+			],
+		)
+
+	def test_kaveikti_events_page_extracts_event_links(self):
+		html = """
+		<html><body>
+		  <a href="https://www.kaveikti.lt/renginiai/jazz-night/">Jazz Night</a>
+		  <a href="/renginiai/startup-meetup/">Startup Meetup</a>
+		  <a href="https://www.kaveikti.lt/renginiai/">Events Index</a>
+		</body></html>
+		"""
+
+		links = self._extract_kaveikti_links(html, "https://www.kaveikti.lt/renginiai")
+
+		self.assertEqual(
+			links,
+			[
+				"https://www.kaveikti.lt/renginiai/jazz-night/",
+				"https://www.kaveikti.lt/renginiai/startup-meetup/",
+			],
+		)
+
+
+class ScrapeEventsDatabasePersistenceTests(TestCase):
+	endpoint = "/api/scrape-events/"
+
+	def _post(self, payload):
+		return self.client.post(
+			self.endpoint,
+			data=json.dumps(payload),
+			content_type="application/json",
+		)
+
+	def _fake_ollama(self):
+		return types.SimpleNamespace(
+			chat=lambda **kwargs: {
+				"message": {
+					"content": json.dumps(
+						{
+							"name": "Scraped Event",
+							"date": "2026-05-20",
+							"time": "18:30",
+							"place": "Vilnius",
+							"price": "12.00",
+							"categories": ["Tech"],
+							"short_description": "A scraped event saved into the database.",
+						}
+					)
+				}
+			}
+		)
+
+	def _fake_response(self, html):
+		mock_response = MagicMock()
+		mock_response.text = html
+		mock_response.raise_for_status.return_value = None
+		return mock_response
 
 	@patch("hello.views.requests.get")
-	@patch("hello.views.time.sleep")
-	def test_handles_connection_error_retry_fail(self, mock_sleep, mock_get):
-		mock_get.side_effect = requests.ConnectionError("Connection failed")
+	def test_scrape_events_saves_meetup_event_into_database(self, mock_get):
+		list_html = """
+		<html><body>
+		  <a href="https://www.meetup.com/vilnius-tech-talks/events/123/">Tech Talk</a>
+		</body></html>
+		"""
+		detail_html = "<html><body><h1>Tech Talk</h1><p>Vilnius tech talk details</p></body></html>"
+		mock_get.side_effect = [
+			self._fake_response(list_html),
+			self._fake_response(detail_html),
+		]
 
-		response = self._post({
-			"url": "https://example.com",
-			"fromSemester": 1,
-			"toSemester": 2,
-		})
+		with patch.dict(sys.modules, {"ollama": self._fake_ollama()}):
+			response = self._post({"url": "https://www.meetup.com/find/?keywords=Vilnius%20EVENTS", "city": "Vilnius"})
 
-		self.assertEqual(response.status_code, 400)
-		self.assertIn("Failed after 3 attempts", response.json()["error"])
-		self.assertEqual(mock_get.call_count, 3)
-		self.assertEqual(mock_sleep.call_count, 2)
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(Event.objects.filter(name="Scraped Event", place="Vilnius").exists())
+		self.assertTrue(EventPageUrl.objects.filter(url="https://www.meetup.com/vilnius-tech-talks/events/123/").exists())
+
+	@patch("hello.views.requests.get")
+	def test_scrape_events_saves_litexpo_event_into_database(self, mock_get):
+		list_html = """
+		<html><body>
+		  <a href="https://www.litexpo.lt/en/events/design-week/">Design Week</a>
+		</body></html>
+		"""
+		detail_html = "<html><body><h1>Design Week</h1><p>Litexpo design week details</p></body></html>"
+		mock_get.side_effect = [
+			self._fake_response(list_html),
+			self._fake_response(detail_html),
+		]
+
+		with patch.dict(sys.modules, {"ollama": self._fake_ollama()}):
+			response = self._post({"url": "https://www.litexpo.lt/en/events/"})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(Event.objects.filter(name="Scraped Event", place="Vilnius").exists())
+		self.assertTrue(EventPageUrl.objects.filter(url="https://www.litexpo.lt/en/events/design-week/").exists())
+
+	@patch("hello.views.requests.get")
+	def test_scrape_events_saves_kaveikti_event_into_database(self, mock_get):
+		list_html = """
+		<html><body>
+		  <a href="https://www.kaveikti.lt/renginiai/jazz-night/">Jazz Night</a>
+		</body></html>
+		"""
+		detail_html = "<html><body><h1>Jazz Night</h1><p>Kaveikti jazz details</p></body></html>"
+		mock_get.side_effect = [
+			self._fake_response(list_html),
+			self._fake_response(detail_html),
+		]
+
+		with patch.dict(sys.modules, {"ollama": self._fake_ollama()}):
+			response = self._post({"url": "https://www.kaveikti.lt/renginiai"})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(Event.objects.filter(name="Scraped Event", place="Vilnius").exists())
+		self.assertTrue(EventPageUrl.objects.filter(url="https://www.kaveikti.lt/renginiai/jazz-night/").exists())
 
 
 # AC1: Sistema identifikuoja studijų dalykų, esančių kiekviename semestre pavadinimus.

@@ -399,7 +399,7 @@ def _extract_meetup_event_links(soup, base_url, max_events=20):
             continue
         if "/events/" not in parsed.path:
             continue
-        if "/find/" in parsed.path:
+        if "/find/" in parsed.path or "/topics/" in parsed.path:
             continue
         if normalized in seen:
             continue
@@ -1391,11 +1391,19 @@ def scrape_events(request):
     parsed_url = urlparse(url)
     host = parsed_url.netloc.lower()
     path = parsed_url.path.lower()
+    query = parsed_url.query.lower()
+    page_text = soup.get_text(" ", strip=True).lower()
 
     if "litexpo.lt" in host and "/en/events" in path:
         source = "litexpo"
         event_links = _extract_litexpo_event_links(soup, url, max_events=max_events)
-    elif "meetup.com" in host and "/find/" in path:
+    elif "meetup.com" in host and (
+        "/find/" in path
+        or "/events/" in path
+        or "vilnius" in query
+        or "vilnius" in page_text
+        or "events" in page_text
+    ):
         source = "meetup"
         event_links = _extract_meetup_event_links(soup, url, max_events=max_events)
         if not city:
@@ -1407,6 +1415,8 @@ def scrape_events(request):
                     if part.startswith("location="):
                         city = part.split("=", 1)[-1].split("--")[-1]
                         break
+            elif "vilnius" in query or "vilnius" in page_text:
+                city = "Vilnius"
     elif "kaveikti.lt" in host and "/renginiai" in path:
         source = "kaveikti"
         event_links = _extract_kaveikti_event_links(soup, url, max_events=max_events)
@@ -1662,28 +1672,51 @@ def search_events_by_subject_category(subject):
     ]
 
 
-def get_events_similar_to_student_subjects(student):
-    """Return events that match categories of student's subjects with interest > 0."""
-    base_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
-
+def _build_student_category_interest_map(student):
     student_subjects = StudentSubject.objects.filter(
         student=student,
         interest__gt=0,
     ).select_related("subject__category")
 
-    category_names = {
-        ss.subject.category.name.strip().lower()
-        for ss in student_subjects
-        if ss.subject and ss.subject.category and ss.subject.category.name
-    }
+    category_interest_map = {}
+    for student_subject in student_subjects:
+        category = student_subject.subject.category if student_subject.subject else None
+        category_name = (category.name or "").strip().lower() if category else ""
+        if not category_name:
+            continue
 
-    similar_events = [
-        event
-        for event in base_events
-        if any((c.name or "").strip().lower() in category_names for c in event.categories.all())
-    ]
+        current_interest = category_interest_map.get(category_name, 0)
+        if student_subject.interest > current_interest:
+            category_interest_map[category_name] = student_subject.interest
 
-    return similar_events, sorted(category_names)
+    return category_interest_map
+
+
+def get_events_similar_to_student_subjects(student):
+    """Return events that match categories of student's subjects with interest > 0.
+
+    Events are ranked by the highest matching interest level, while preserving the
+    existing newest-first ordering as a tie-breaker.
+    """
+    base_events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
+
+    category_interest_map = _build_student_category_interest_map(student)
+    similar_events = []
+
+    for event in base_events:
+        matching_interests = [
+            category_interest_map.get((category.name or "").strip().lower(), 0)
+            for category in event.categories.all()
+            if (category.name or "").strip().lower() in category_interest_map
+        ]
+        if not matching_interests:
+            continue
+
+        similar_events.append((max(matching_interests), event))
+
+    similar_events.sort(key=lambda item: item[0], reverse=True)
+
+    return [event for _, event in similar_events], sorted(category_interest_map.keys())
 
 
 @api_view(["GET"])

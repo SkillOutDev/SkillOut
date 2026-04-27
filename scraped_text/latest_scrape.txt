@@ -1,1 +1,1 @@
-Programu sistemos
+Error in spk.plan_test: p_str = 24581; ORA-01403: no data found

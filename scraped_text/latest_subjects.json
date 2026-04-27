@@ -1,8 +1,6 @@
 {
-  "url": "https://example.com/plan",
+  "url": "https://is.vu.lt/pls/pub/spk.plan_test?p_f=html&p_k=lt&p_str=24581",
   "from_semester": 1,
-  "to_semester": 2,
-  "study_subjects": [
-    "Programu sistemos"
-  ]
+  "to_semester": 1,
+  "study_subjects": []
 }
