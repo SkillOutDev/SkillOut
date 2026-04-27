@@ -10,7 +10,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from hello.models import Category, Event, Student, StudentSubject, Subject
+from hello.models import Category, Event, EventPageUrl, Student, StudentSubject, Subject
 
 
 class ScrapeSemesterValidationTests(TestCase):
