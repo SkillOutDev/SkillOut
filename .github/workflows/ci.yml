@@ -10,6 +10,7 @@ on:
       - "SD-60*-*"
       - "SD-61*-*"
       - "SD-57*-*"
+      - "SD-62*-*"
     paths:
       - frontend/**
       - cypress/**
