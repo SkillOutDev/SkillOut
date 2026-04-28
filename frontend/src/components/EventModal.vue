@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="event-modal-overlay" @click.self.stop="closeModal">
+  <div v-if="visible" class="event-modal-overlay">
     <div class="event-modal">
       <button class="close-btn" @click="closeModal">&times;</button>
       <h2>{{ event.name }}</h2>
@@ -7,7 +7,7 @@
       <p><strong>Vieta:</strong> {{ event.place }}</p>
       <p><strong>Kaina:</strong> {{ event.price }}</p>
       <p><strong>Organizatorius:</strong> {{ event.organizer || '-' }}</p>
-      <p><strong>Aprašymas:</strong> {{ event.short_description }}</p>
+      <p><strong>Aprašymas:</strong> {{ event.description }}</p>
       <p><strong>Nuoroda:</strong> <a :href="event.source_url" target="_blank">Renginio šaltinis</a></p>
       <p class="ai-sentence"><strong>DI sakinys:</strong> {{ event.ai_sentence }}</p>
     </div>
