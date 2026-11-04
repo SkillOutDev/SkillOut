@@ -835,20 +835,6 @@ def update_student_subject_interests(request):
         status=status.HTTP_200_OK,
     )
 
-<<<<<<< HEAD
-
-@extend_schema(
-    request=GetStudentSubjectsPathSerializer,
-    responses={200: StudentSubjectsResponseSerializer, 404: serializers.DictField()},
-)
-@api_view(["GET"])
-def get_student_subjects(request, student_id):
-    try:
-        student = Student.objects.get(id=student_id)
-    except Student.DoesNotExist:
-        return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
-=======
->>>>>>> SD-78-Sistema-turi-naudoti-vartotojo-susidomėjimo-lygius-iš-duomenų-bazės-kaip-renginių-rūšiavimo-kriterijų-
 
 def build_student_subjects_with_interest(student):
     """Return student's linked subjects with interest levels and category metadata."""
@@ -1963,7 +1949,11 @@ def purge_ended_events(request):
 
 @extend_schema(
     request=AddEventRequestSerializer,
-    responses={201: serializers.DictField(), 200: serializers.DictField(), 400: serializers.DictField()},
+    responses={
+        201: serializers.DictField(),
+        400: serializers.DictField(),
+        409: serializers.DictField(),
+    },
 )
 @api_view(["POST"])
 def add_event(request):
@@ -1978,51 +1968,102 @@ def add_event(request):
     source_url = str(data.get("source_url") or "").strip() or None
 
     if not name:
-        return Response({"error": "'name' is required."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Event title must not be empty"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if not date_raw:
         return Response({"error": "'date' is required (YYYY-MM-DD)."}, status=status.HTTP_400_BAD_REQUEST)
     if not place:
         return Response({"error": "'place' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date_raw).strip()):
+        return Response(
+            {"error": "Event date must be in YYYY-MM-DD format"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     date_value = _parse_event_date(date_raw)
     if date_value is None:
-        return Response({"error": "Invalid 'date' format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Event date must be in YYYY-MM-DD format"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     time_value = _parse_event_time(time_raw) if time_raw else None
+    if time_raw and time_value is None:
+        return Response(
+            {"error": "Event time must be in HH:mm format"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if time_value is None:
         time_value = datetime.strptime("00:00", "%H:%M").time()
 
+    price_text = str(price_raw).strip().replace("EUR", "").replace("€", "").replace(" ", "")
+    price_text = price_text.replace(",", ".")
+    if price_text and price_text.lower() != "free":
+        try:
+            parsed_price = Decimal(price_text)
+        except InvalidOperation:
+            parsed_price = None
+        if (
+            parsed_price is None
+            or not parsed_price.is_finite()
+            or parsed_price.as_tuple().exponent < -2
+            or len(parsed_price.as_tuple().digits)
+            + max(parsed_price.as_tuple().exponent, 0)
+            > 10
+        ):
+            return Response(
+                {"error": "Event price must be a decimal number with up to 2 decimal places"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     price_value = _parse_event_price(price_raw)
     if price_value is None:
-        return Response({"error": "Invalid 'price' value."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Event price must be a decimal number with up to 2 decimal places"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     if not isinstance(category_names, list):
         return Response({"error": "'categories' must be a list of strings."}, status=status.HTTP_400_BAD_REQUEST)
 
-    event, created = Event.objects.update_or_create(
+    normalized_category_names = []
+    for cat_name in category_names:
+        if not isinstance(cat_name, str):
+            return Response(
+                {"error": "'categories' must be a list of strings."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cat_name = cat_name.strip()
+        if cat_name:
+            normalized_category_names.append(cat_name)
+
+    if Event.objects.filter(name=name, date=date_value, time=time_value).exists():
+        return Response(
+            {"error": "Event already exists."},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    event_categories = [
+        Category.objects.get_or_create(name=cat_name)[0]
+        for cat_name in normalized_category_names
+    ]
+    event = Event.objects.create(
         name=name,
         date=date_value,
-        defaults={
-            "time": time_value,
-            "place": place,
-            "price": price_value,
-            "short_description": short_description,
-            "source_url": source_url,
-        },
+        time=time_value,
+        place=place,
+        price=price_value,
+        short_description=short_description,
+        source_url=source_url,
     )
-
-    event_categories = []
-    for cat_name in category_names:
-        cat_name = str(cat_name).strip()
-        if cat_name:
-            category, _ = Category.objects.get_or_create(name=cat_name)
-            event_categories.append(category)
-    if event_categories:
-        event.categories.set(event_categories)
+    event.categories.set(event_categories)
 
     return Response(
         {
-            "message": "Event created." if created else "Event updated.",
+            "message": "Event created.",
             "event_id": event.id,
             "name": event.name,
             "date": str(event.date),
@@ -2032,7 +2073,7 @@ def add_event(request):
             "short_description": event.short_description,
             "categories": [c.name for c in event.categories.all()],
             "source_url": event.source_url,
-            "created": created,
+            "created": True,
         },
-        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        status=status.HTTP_201_CREATED,
     )

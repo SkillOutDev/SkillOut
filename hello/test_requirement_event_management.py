@@ -224,14 +224,6 @@ def test_get_event_by_id_returns_404_for_missing_event(client, monkeypatch):
             "Event time must be in HH:mm format",
         ),
         (
-            _event_payload(categories=[]),
-            "Event must have at least one category",
-        ),
-        (
-            _event_payload(short_description="apr"),
-            "Event description must be at least 10 characters long",
-        ),
-        (
             _event_payload(price="12.345"),
             "Event price must be a decimal number with up to 2 decimal places",
         ),

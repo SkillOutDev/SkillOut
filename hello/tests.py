@@ -672,7 +672,7 @@ class SD77StudentCategoryEventSearchTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		data = response.json()
-		self.assertEqual(data.get("mode"), "matched")
+		self.assertEqual(data.get("mode"), "matched-only")
 		self.assertEqual(data.get("total"), 1)
 		names = [e["name"] for e in data.get("events", [])]
 		self.assertEqual(names, ["Hackathon"])
@@ -1042,16 +1042,16 @@ class AddEventTests(TestCase):
 		self.assertEqual(data["name"], "Test Event")
 		self.assertTrue(data["created"])
 
-	def test_updates_existing_event(self):
+	def test_rejects_duplicate_event(self):
 		self._post(self._valid_payload())
 		response = self._post(self._valid_payload(price="20.00"))
-		self.assertEqual(response.status_code, 200)
-		self.assertFalse(response.json()["created"])
+		self.assertEqual(response.status_code, 409)
+		self.assertIn("already exists", response.json()["error"])
 
 	def test_rejects_missing_name(self):
 		response = self._post({"date": "2026-06-01", "place": "Vilnius"})
 		self.assertEqual(response.status_code, 400)
-		self.assertIn("name", response.json()["error"].lower())
+		self.assertEqual(response.json()["error"], "Event title must not be empty")
 
 	def test_rejects_missing_date(self):
 		response = self._post({"name": "Event", "place": "Vilnius"})
@@ -1342,7 +1342,7 @@ class GetEventsForStudentCategoriesTests(TestCase):
 		response = self.client.get(f"/api/events/student/{self.student.id}/")
 		self.assertEqual(response.status_code, 200)
 		data = response.json()
-		self.assertEqual(data["mode"], "matched")
+		self.assertEqual(data["mode"], "matched-only")
 		names = [e["name"] for e in data["events"]]
 		self.assertIn("IT Conference", names)
 
