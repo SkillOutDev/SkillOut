@@ -14,6 +14,36 @@ SkillOut is a full-stack app with:
 - `frontend/` - Vue client app
 - `scraped_text/` - Output files from scraping (`latest_scrape.txt`, `latest_subjects.json`)
 
+## Team Git Workflow
+
+Use `kokybes-pratybos-Samanta-EgleK` as the team's integration branch. Always create feature
+branches from it, and target it when opening pull requests. Do not target `main`
+or `develop`.
+
+```powershell
+git fetch origin
+git switch kokybes-pratybos-Samanta-EgleK
+git pull
+git switch -c feature/short-description
+```
+
+Make and commit your changes on the feature branch, then push it:
+
+```powershell
+git add <files-you-changed>
+git commit -m "Describe the change"
+git push -u origin feature/short-description
+```
+
+Open a pull request on GitHub from your feature branch **into**
+`kokybes-pratybos`. After it is reviewed and merged, repeat the steps above for
+your next feature.
+
+`git switch kokybes-pratybos` also works the first time in most setups when the
+branch exists on `origin`; if Git can't find it, run
+`git switch --track origin/kokybes-pratybos` once. `--track` connects your local
+branch to the remote one so `git pull` knows where to get updates.
+
 ## Prerequisites
 
 Install these before running:
