@@ -139,17 +139,10 @@ def _normalize_subject_names(raw_subjects):
         'study_subjects\\": [',
     }
 
-<<<<<<< HEAD
     for item in raw_subjects:
         if not isinstance(item, str):
             continue
         value = item.strip()
-=======
-    for value in raw_subjects:
-        if not isinstance(value, str):
-            continue
-        value = value.strip()
->>>>>>> SD-78-Sistema-turi-naudoti-vartotojo-susidomėjimo-lygius-iš-duomenų-bazės-kaip-renginių-rūšiavimo-kriterijų-
         if not value:
             continue
         compact = value.replace(" ", "")
