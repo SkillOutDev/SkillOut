@@ -31,6 +31,7 @@ def _event_payload(**overrides):
 
 @pytest.mark.django_db
 def test_purge_ended_events_removes_expired_events(client):
+    """Purge ended events removes expired events."""
     client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(
@@ -69,6 +70,7 @@ def test_purge_ended_events_removes_expired_events(client):
 
 @pytest.mark.django_db
 def test_get_event_by_id_returns_existing_event(client, monkeypatch):
+    """Get event by id returns existing event."""
     create_response = client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload()),
@@ -88,6 +90,7 @@ def test_get_event_by_id_returns_existing_event(client, monkeypatch):
 
 @pytest.mark.django_db
 def test_create_event_with_valid_payload(client):
+    """Create event with valid payload."""
     response = client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload()),
@@ -107,6 +110,7 @@ def test_create_event_with_valid_payload(client):
 
 @pytest.mark.django_db
 def test_create_event_when_unique_name_date_time_combination(client):
+    """Create event when unique name date time combination."""
     response = client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload()),
@@ -126,6 +130,7 @@ def test_create_event_when_unique_name_date_time_combination(client):
 
 @pytest.mark.django_db
 def test_get_events_returns_all_events_with_required_fields(client):
+    """Get events returns all events with required fields."""
     client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload(name="Koncertas", categories=["Muzika"])),
@@ -165,6 +170,7 @@ def test_get_events_returns_all_events_with_required_fields(client):
 
 @pytest.mark.django_db
 def test_create_duplicate_event_returns_conflict_requirement(client):
+    """Create duplicate event returns conflict requirement."""
     client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(_event_payload()),
@@ -191,6 +197,7 @@ def test_create_duplicate_event_returns_conflict_requirement(client):
 
 @pytest.mark.django_db
 def test_get_events_returns_empty_array_when_no_events(client):
+    """Get events returns empty array when no events."""
     response = client.get(LIST_EVENTS_ENDPOINT)
 
     assert response.status_code == 200
@@ -199,6 +206,7 @@ def test_get_events_returns_empty_array_when_no_events(client):
 
 @pytest.mark.django_db
 def test_get_event_by_id_returns_404_for_missing_event(client, monkeypatch):
+    """Get event by id returns 404 for missing event."""
     monkeypatch.setitem(sys.modules, "ollama", _mock_ollama_module())
 
     response = client.get("/api/events/999/")
@@ -230,6 +238,7 @@ def test_get_event_by_id_returns_404_for_missing_event(client, monkeypatch):
     ],
 )
 def test_event_payload_validation_requirements(client, payload, expected_error):
+    """Event payload validation requirements."""
     response = client.post(
         POST_EVENT_ENDPOINT,
         data=json.dumps(payload),
