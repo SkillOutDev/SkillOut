@@ -8,6 +8,7 @@ import requests
 
 @pytest.mark.django_db
 def test_requires_url_with_http_or_https_scheme(client):
+    """Requires url with http or https scheme."""
     response = client.post(
         "/api/scrape-text/",
         data=json.dumps(
@@ -27,6 +28,7 @@ def test_requires_url_with_http_or_https_scheme(client):
 @pytest.mark.django_db
 @pytest.mark.parametrize("url", ["http://example.com/plan", "https://example.com/plan"])
 def test_accepts_http_and_https_urls(client, url):
+    """Accepts http and https urls."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html><body><h3>1 semestras</h3><p>Matematika</p></body></html>"
@@ -52,6 +54,7 @@ def test_accepts_http_and_https_urls(client, url):
 
 @pytest.mark.django_db
 def test_returns_subjects_list_when_scrape_and_analysis_succeeds(client):
+    """Returns subjects list when scrape and analysis succeeds."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = (
@@ -102,6 +105,7 @@ def test_returns_subjects_list_when_scrape_and_analysis_succeeds(client):
 
 @pytest.mark.django_db
 def test_returns_empty_subjects_when_none_found(client):
+    """Returns empty subjects when none found."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html><body><p>Nera dalyku</p></body></html>"
@@ -132,6 +136,7 @@ def test_returns_empty_subjects_when_none_found(client):
 @pytest.mark.django_db
 @pytest.mark.parametrize("status_code", [404, 500])
 def test_returns_http_error_message_when_page_is_unreachable_by_http_status(client, status_code):
+    """Returns http error message when page is unreachable by http status."""
     mock_response = MagicMock()
     http_error = requests.HTTPError(f"{status_code} Error")
     http_error.response = MagicMock()
@@ -157,6 +162,7 @@ def test_returns_http_error_message_when_page_is_unreachable_by_http_status(clie
 
 @pytest.mark.django_db
 def test_returns_failed_after_3_attempts_message(client):
+    """Returns failed after 3 attempts message."""
     with patch("hello.views.requests.get", side_effect=requests.Timeout("Request timed out")) as mock_get, patch(
         "hello.views.time.sleep"
     ) as mock_sleep:
@@ -180,6 +186,7 @@ def test_returns_failed_after_3_attempts_message(client):
 
 @pytest.mark.django_db
 def test_returns_request_failed_message_for_generic_request_exception(client):
+    """Returns request failed message for generic request exception."""
     with patch(
         "hello.views.requests.get", side_effect=requests.RequestException("network exploded")
     ):
@@ -201,6 +208,7 @@ def test_returns_request_failed_message_for_generic_request_exception(client):
 
 @pytest.mark.django_db
 def test_returns_ollama_request_failed_message_when_analysis_fails(client):
+    """Returns ollama request failed message when analysis fails."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html><body><p>Some content</p></body></html>"

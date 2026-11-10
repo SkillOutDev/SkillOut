@@ -21,6 +21,12 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema
 
 from .models import Category, Student, StudentSubject, Subject
+from .services.scrape_text import (
+    ScrapeTextError,
+    _extract_subject_names_from_ollama_output,
+    _normalize_subject_names,
+    process_scrape_text,
+)
 
 
 class AddStudentRequestSerializer(serializers.Serializer):
@@ -120,69 +126,6 @@ class StudentSubjectsResponseSerializer(serializers.Serializer):
     student_username = serializers.CharField()
     subjects = SubjectItemSerializer(many=True)
     total_subjects = serializers.IntegerField()
-
-
-def _normalize_subject_names(raw_subjects):
-    """Convert noisy AI output into a clean, deduplicated list of subject names."""
-    if not isinstance(raw_subjects, list):
-        return []
-
-    cleaned = []
-    seen = set()
-    skip_tokens = {
-        "{",
-        "}",
-        "[",
-        "]",
-        '"study_subjects": [',
-        'study_subjects": [',
-        'study_subjects\\": [',
-    }
-
-    for item in raw_subjects:
-        if not isinstance(item, str):
-            continue
-        value = item.strip()
-        if not value:
-            continue
-        compact = value.replace(" ", "")
-        if value in skip_tokens:
-            continue
-        if compact.startswith('study_subjects":[') or compact.startswith("study_subjects:["):
-            continue
-
-        key = value.casefold()
-        if key in seen:
-            continue
-
-        seen.add(key)
-        cleaned.append(value)
-
-    return cleaned
-
-
-def _extract_subject_names_from_ollama_output(raw_content):
-    parsed = None
-    try:
-        parsed = json.loads(raw_content)
-    except json.JSONDecodeError:
-        start = raw_content.find("{")
-        end = raw_content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                parsed = json.loads(raw_content[start : end + 1])
-            except json.JSONDecodeError:
-                parsed = None
-
-    if isinstance(parsed, dict) and isinstance(parsed.get("study_subjects"), list):
-        return _normalize_subject_names(parsed["study_subjects"])
-
-    fallback = [
-        line.strip("-• \t")
-        for line in raw_content.splitlines()
-        if line.strip("-• \t")
-    ]
-    return _normalize_subject_names(fallback)
 
 
 def _classify_subject_category(subject_name, model):
@@ -568,9 +511,11 @@ def _parse_json_from_model_output(raw_content):
 # Create your views here.
 
 def home(request):
+    """Render the home page."""
     return HttpResponse("Hello, world!")
 
 def hello_there(request, name):
+    """Render the greeting page for the given name."""
     print(request.build_absolute_uri()) #optional
     return render(
         request,
@@ -587,6 +532,7 @@ def hello_there(request, name):
 )
 @api_view(["POST"])
 def add_student(request):
+    """Create a user and a linked student from the request payload."""
     data = request.data
     username = data.get("username")
     email = data.get("email")
@@ -624,6 +570,7 @@ def add_student(request):
 )
 @api_view(["POST"])
 def add_category(request):
+    """Create a subject category from the request payload."""
     data = request.data
     name = data.get("name")
 
@@ -649,6 +596,7 @@ def add_category(request):
 )
 @api_view(["POST"])
 def add_subject(request):
+    """Create a subject, optionally assigned to a category."""
     data = request.data
     name = data.get("name")
     category_id = data.get("category_id")
@@ -684,6 +632,7 @@ def add_subject(request):
 )
 @api_view(["POST"])
 def add_subject_interest(request):
+    """Set the student's interest level for a subject."""
     data = request.data
     # Hardcoded current student for now (no auth yet).
     student_id = DEFAULT_STUDENT_ID
@@ -735,6 +684,7 @@ def add_subject_interest(request):
 )
 @api_view(["PUT"])
 def update_student_subject_interests(request):
+    """Bulk update the student's subject interest levels."""
     data = request.data if isinstance(request.data, dict) else {}
     items = data.get("subjects")
 
@@ -864,6 +814,7 @@ def build_student_subjects_with_interest(student):
 )
 @api_view(["GET"])
 def get_student_subjects(request, student_id):
+    """Return a student's subjects with their interest levels."""
     try:
         student = Student.objects.get(id=student_id)
     except Student.DoesNotExist:
@@ -887,133 +838,14 @@ def get_student_subjects(request, student_id):
 )
 @api_view(["POST"])
 def scrape_text(request):
+    """Scrape a study plan page and extract subjects for a semester range."""
     payload = request.data if isinstance(request.data, dict) else {}
-
-    url = (payload.get("url") or "").strip()
-    if "fromSemester" not in payload or "toSemester" not in payload:
-        return JsonResponse(
-            {"error": "Fields 'fromSemester' and 'toSemester' are required."},
-            status=400,
-        )
-
-    from_semester = payload.get("fromSemester")
-    to_semester = payload.get("toSemester")
-
     try:
-        from_semester = int(from_semester)
-        to_semester = int(to_semester)
-    except (TypeError, ValueError):
-        return Response({"error": "fromSemester and toSemester must be numbers."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if from_semester < 1 or to_semester < 1:
-        return JsonResponse({"error": "fromSemester and toSemester must be at least 1."}, status=400)
-
-    if from_semester > 8 or to_semester > 8:
-        return JsonResponse({"error": "fromSemester and toSemester must be at most 8."}, status=400)
-
-    if from_semester > to_semester:
-        return Response({"error": "fromSemester cannot be greater than toSemester."}, status=status.HTTP_400_BAD_REQUEST)
-    if not url:
-        return Response({"error": "Field 'url' is required."}, status=status.HTTP_400_BAD_REQUEST)
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return Response({"error": "URL must start with http:// or https://."}, status=status.HTTP_400_BAD_REQUEST)
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            break
-        except requests.HTTPError as e:
-            return Response({"error": f"HTTP error: {e.response.status_code}"}, status=status.HTTP_400_BAD_REQUEST)
-        except (requests.Timeout, requests.ConnectionError) as e:
-            if attempt == max_retries - 1:
-                return Response({"error": f"Failed after {max_retries} attempts: {e}"}, status=status.HTTP_400_BAD_REQUEST)
-            time.sleep(1)
-        except requests.RequestException as e:
-            return Response({"error": f"Request failed: {e}"}, status=status.HTTP_400_BAD_REQUEST)
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    for element in soup(["script", "style", "noscript"]):
-        element.extract()
-
-    text = soup.get_text(separator=" ", strip=True)[:60000]
-
-    output_dir = Path(settings.BASE_DIR) / "scraped_text"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    txt_output_file = output_dir / "latest_scrape.txt"
-    txt_output_file.write_text(text, encoding="utf-8")
-
-    try:
-        import ollama
-    except ImportError:
-        return Response(
-            {"error": "Ollama Python package is not installed. Install it with: pip install ollama"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-    prompt = (
-    "Task: Extract study subjects only from selected semesters.\n"
-    f"Selected semesters: {from_semester} to {to_semester} (inclusive).\n\n"
-    "Strict rules:\n"
-    "1) Include subject only if it is clearly listed under semester number "
-    f"{from_semester}..{to_semester}.\n"
-    "2) Exclude all subjects from any semester outside that range.\n"
-    "3) If semester is unclear, exclude it.\n"
-    "4) Keep original subject text exactly (no translation, no rewriting).\n"
-    "5) Remove duplicates.\n"
-    "6) Output ONLY valid JSON with one key exactly:\n"
-    '{"study_subjects":["...","..."]}\n'
-    "7) Do not output markdown, comments, explanations, or extra keys.\n\n"
-    "Webpage text:\n"
-    f"{text}"
-)
-
-    try:
-        ollama_response = ollama.chat(
-            model="llama3",
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0, "top_p": 0.1}
-        )
-    except Exception as exc:
-        return Response({"error": f"Ollama request failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    raw_content = ollama_response.get("message", {}).get("content", "").strip()
-
-    if raw_content.startswith("```"):
-        raw_content = raw_content.strip("`")
-        if raw_content.lower().startswith("json"):
-            raw_content = raw_content[4:].strip()
-
-    subjects = _extract_subject_names_from_ollama_output(raw_content)
-
-    json_output = {
-        "url": url,
-        "from_semester": from_semester,
-        "to_semester": to_semester,
-        "study_subjects": subjects,
-    }
-
-    json_output_file = output_dir / "latest_subjects.json"
-    json_output_file.write_text(
-        json.dumps(json_output, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-    result_message = "Scrape and AI extraction completed successfully."
-    if not subjects:
-        result_message = "No results found for the selected semester range."
-
+        result = process_scrape_text(payload)
+    except ScrapeTextError as exc:
+        return Response({"error": str(exc)}, status=exc.status_code)
     return Response(
-        {
-            "message": result_message,
-            "file": str(txt_output_file.relative_to(settings.BASE_DIR)),
-            "json_file": str(json_output_file.relative_to(settings.BASE_DIR)),
-            "characters": len(text),
-            "subjects_count": len(subjects),
-            "study_subjects": subjects,
-        },
+        result,
         status=status.HTTP_200_OK,
     )
 
@@ -1024,6 +856,7 @@ def scrape_text(request):
 )
 @api_view(["POST"])
 def import_subjects_with_categories(request):
+    """Import subjects, classifying each into a category with the AI model."""
     payload = request.data if isinstance(request.data, dict) else {}
     model = (payload.get("model") or "llama3").strip()
     incoming_subjects = payload.get("study_subjects")
@@ -1127,6 +960,7 @@ def import_subjects_with_categories(request):
 )
 @api_view(["POST"])
 def scrape_import_and_assign_subjects(request):
+    """Scrape subjects, import them, and assign them to the default student."""
     payload = request.data if isinstance(request.data, dict) else {}
     url = (payload.get("url") or "").strip()
     from_semester = payload.get("fromSemester", 1)
@@ -1333,6 +1167,7 @@ def scrape_import_and_assign_subjects(request):
 )
 @api_view(["POST"])
 def scrape_events(request):
+    """Scrape events from a web page and store them."""
     payload = request.data if isinstance(request.data, dict) else {}
 
     url = (payload.get("url") or "").strip()
@@ -1590,6 +1425,7 @@ def scrape_events(request):
 
 # This view is for testing purposes to retrieve the latest scraped subjects from the JSON file.
 def get_latest_subjects(request):
+    """Return the most recently scraped subjects."""
     # SVARBU: Failas yra 'scraped_text' aplanke, todėl turime jį įtraukti į kelią
     file_path = os.path.join(settings.BASE_DIR, 'scraped_text', 'latest_subjects.json')
     
@@ -1606,6 +1442,7 @@ def get_latest_subjects(request):
 
 
 def get_latest_events(request):
+    """Return the most recently scraped events."""
     file_path = os.path.join(settings.BASE_DIR, 'scraped_text', 'latest_events.json')
 
     if os.path.exists(file_path):
@@ -1957,6 +1794,7 @@ def purge_ended_events(request):
 )
 @api_view(["POST"])
 def add_event(request):
+    """Create an event from the request payload."""
     data = request.data
     name = str(data.get("name") or "").strip()
     date_raw = data.get("date")

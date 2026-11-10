@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 @pytest.mark.django_db
 def test_analysis_starts_when_url_returns_http_200(client):
+    """Analysis starts when url returns http 200."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html><body><p>Semester 1: Matematika</p></body></html>"
@@ -40,6 +41,7 @@ def test_analysis_starts_when_url_returns_http_200(client):
 @pytest.mark.django_db
 @pytest.mark.parametrize("status_code", [404, 500])
 def test_system_handles_http_error(client, status_code):
+    """System handles http error."""
     mock_response = MagicMock()
     http_error = requests.HTTPError(f"{status_code} Error")
     http_error.response = MagicMock()
@@ -59,6 +61,7 @@ def test_system_handles_http_error(client, status_code):
 
 @pytest.mark.django_db
 def test_system_retries_on_connection_error_and_timeout(client):
+    """System retries on connection error and timeout."""
     mock_get = patch("hello.views.requests.get").start()
     mock_get.side_effect = [
         requests.ConnectionError("Connection failed"),
@@ -87,6 +90,7 @@ def test_system_retries_on_connection_error_and_timeout(client):
 
 @pytest.mark.django_db
 def test_system_returns_error_after_three_failed_attempts(client):
+    """System returns error after three failed attempts."""
     with patch("hello.views.requests.get", side_effect=requests.Timeout("Request timed out")) as mock_get, patch("hello.views.time.sleep") as mock_sleep:
         response = client.post(
             "/api/scrape-text/",

@@ -26,6 +26,7 @@ def _subject_payload(**overrides):
 
 @pytest.mark.django_db
 def test_sd_t118_create_new_category(client):
+    """Sd t118 create new category."""
     response = client.post(
         ADD_CATEGORY_ENDPOINT,
         data=json.dumps({"name": "Informatika"}),
@@ -40,6 +41,7 @@ def test_sd_t118_create_new_category(client):
 
 @pytest.mark.django_db
 def test_sd_t113_add_new_study_subject(client):
+    """Sd t113 add new study subject."""
     category = Category.objects.create(name="Technologijos")
 
     response = client.post(
@@ -57,6 +59,7 @@ def test_sd_t113_add_new_study_subject(client):
 
 @pytest.mark.django_db
 def test_sd_t114_add_existing_study_subject_returns_error(client):
+    """Sd t114 add existing study subject returns error."""
     category = Category.objects.create(name="Informatika")
     Subject.objects.create(name="Programavimas", category=category)
 
@@ -72,6 +75,7 @@ def test_sd_t114_add_existing_study_subject_returns_error(client):
 
 @pytest.mark.django_db
 def test_sd_t112_get_subject_list_with_categories(client):
+    """Sd t112 get subject list with categories."""
     it = Category.objects.create(name="IT")
     math = Category.objects.create(name="Matematika")
     Subject.objects.create(name="Algoritmai", category=it)
@@ -96,6 +100,7 @@ def test_sd_t112_get_subject_list_with_categories(client):
 
 @pytest.mark.django_db
 def test_sd_t119_create_student_subject_interest_relation(client):
+    """Sd t119 create student subject interest relation."""
     subject = Subject.objects.create(name="Programavimo pagrindai")
 
     response = client.post(
@@ -116,6 +121,7 @@ def test_sd_t119_create_student_subject_interest_relation(client):
 
 @pytest.mark.django_db
 def test_sd_t115_add_subject_with_invalid_category_number(client):
+    """Sd t115 add subject with invalid category number."""
     response = client.post(
         ADD_SUBJECT_ENDPOINT,
         data=json.dumps(_subject_payload(name="Statistika", category_id=99999)),
@@ -128,6 +134,7 @@ def test_sd_t115_add_subject_with_invalid_category_number(client):
 
 @pytest.mark.django_db
 def test_sd_t116_update_interest_with_invalid_data(client):
+    """Sd t116 update interest with invalid data."""
     subject = Subject.objects.create(name="Duomenu analize")
 
     create_response = client.post(
@@ -152,6 +159,7 @@ def test_sd_t116_update_interest_with_invalid_data(client):
 
 @pytest.mark.django_db
 def test_sd_t3_update_interest_with_valid_data_1_to_5(client):
+    """Sd t3 update interest with valid data 1 to 5."""
     subject = Subject.objects.create(name="Operacines sistemos")
 
     create_response = client.post(
@@ -180,6 +188,7 @@ def test_sd_t3_update_interest_with_valid_data_1_to_5(client):
 
 @pytest.mark.django_db
 def test_sd_t120_interest_is_null_when_not_selected(client):
+    """Sd t120 interest is null when not selected."""
     category = Category.objects.create(name="Inzinerija")
     Subject.objects.create(name="Signalu apdorojimas", category=category)
 
@@ -197,6 +206,7 @@ def test_sd_t120_interest_is_null_when_not_selected(client):
 
 @pytest.mark.django_db
 def test_sd_t117_empty_or_invalid_ai_service_response(client):
+    """Sd t117 empty or invalid ai service response."""
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html><body><p>Studiju planas</p></body></html>"
