@@ -879,7 +879,7 @@ def import_subjects_with_categories(request):
             )
         incoming_subjects = file_payload.get("study_subjects", [])
 
-    subjects = _normalize_subject_names(incoming_subjects)
+    subjects = normalize_subject_names(incoming_subjects)
     if not subjects:
         return Response(
             {"error": "No valid subjects found after normalization."},
@@ -1065,7 +1065,7 @@ def scrape_import_and_assign_subjects(request):
         )
 
     raw_content = ollama_response.get("message", {}).get("content", "").strip()
-    subjects = _extract_subject_names_from_ollama_output(raw_content)
+    subjects = extract_subject_names_from_ollama_output(raw_content)
 
     json_output = {
         "url": url,
