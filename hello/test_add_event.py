@@ -129,7 +129,7 @@ def test_add_event_accepts_supported_price_formats(client, price):
 
 @pytest.mark.django_db
 def test_add_event_rejects_price_when_price_parser_cannot_parse_it(client, monkeypatch):
-    monkeypatch.setattr("hello.views._parse_event_price", lambda value: None)
+    monkeypatch.setattr("hello.services.event_creation._parse_event_price", lambda value: None)
 
     response = _post(client, _payload())
 
