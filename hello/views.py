@@ -21,11 +21,13 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema
 
 from .models import Category, Student, StudentSubject, Subject
-from .services.scrape_text import (
+from .services import (
     ScrapeTextError,
-    _extract_subject_names_from_ollama_output,
-    _normalize_subject_names,
     process_scrape_text,
+)
+from .services.subject_extractor import (
+    extract_subject_names_from_ollama_output,
+    normalize_subject_names,
 )
 
 
@@ -879,7 +881,7 @@ def import_subjects_with_categories(request):
             )
         incoming_subjects = file_payload.get("study_subjects", [])
 
-    subjects = _normalize_subject_names(incoming_subjects)
+    subjects = normalize_subject_names(incoming_subjects)
     if not subjects:
         return Response(
             {"error": "No valid subjects found after normalization."},
@@ -1065,7 +1067,7 @@ def scrape_import_and_assign_subjects(request):
         )
 
     raw_content = ollama_response.get("message", {}).get("content", "").strip()
-    subjects = _extract_subject_names_from_ollama_output(raw_content)
+    subjects = extract_subject_names_from_ollama_output(raw_content)
 
     json_output = {
         "url": url,
