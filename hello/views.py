@@ -3,9 +3,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 import time
-from decimal import Decimal, InvalidOperation
-import re
-import unicodedata
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -26,6 +23,15 @@ from .services.scrape_text import (
     _extract_subject_names_from_ollama_output,
     _normalize_subject_names,
     process_scrape_text,
+)
+from .services.event_creation import (
+    DuplicateEventError,
+    EventPayloadError,
+    _parse_event_date,
+    _parse_event_price,
+    _parse_event_time,
+    create_event,
+    prepare_event_data,
 )
 
 
@@ -193,128 +199,6 @@ from .models import Student, Category, Subject, StudentSubject, Event, EventPage
 import json
 
 import os
-
-
-def _parse_event_date(value):
-    if not value:
-        return None
-    value = str(value).strip()
-    normalized = value.replace("–", "-").replace(",", " ")
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    normalized_ascii = unicodedata.normalize("NFKD", normalized).encode("ascii", "ignore").decode("ascii")
-
-    month_map = {
-        "january": 1,
-        "february": 2,
-        "march": 3,
-        "april": 4,
-        "may": 5,
-        "june": 6,
-        "july": 7,
-        "august": 8,
-        "september": 9,
-        "october": 10,
-        "november": 11,
-        "december": 12,
-        # Lithuanian month forms (genitive and nominative)
-        "sausio": 1,
-        "sausis": 1,
-        "vasario": 2,
-        "vasaris": 2,
-        "kovo": 3,
-        "kovas": 3,
-        "balandzio": 4,
-        "balandis": 4,
-        "geguzes": 5,
-        "geguze": 5,
-        "birzelio": 6,
-        "birzelis": 6,
-        "liepos": 7,
-        "liepa": 7,
-        "rugpjucio": 8,
-        "rugpjutis": 8,
-        "rugsejo": 9,
-        "rugsejis": 9,
-        "spalio": 10,
-        "spalis": 10,
-        "lapkricio": 11,
-        "lapkritis": 11,
-        "gruodzio": 12,
-        "gruodis": 12,
-    }
-
-    lower = normalized_ascii.lower()
-
-    # Patterns like: "May 2-3 2026" or "October 23-25 2026"
-    m = re.match(r"^([a-z]+)\s+(\d{1,2})\s*-\s*\d{1,2}\s+(\d{4})$", lower)
-    if m and m.group(1) in month_map:
-        return datetime(int(m.group(3)), month_map[m.group(1)], int(m.group(2))).date()
-
-    # Patterns like: "2026 May 22-24"
-    m = re.match(r"^(\d{4})\s+([a-z]+)\s+(\d{1,2})\s*-\s*\d{1,2}$", lower)
-    if m and m.group(2) in month_map:
-        return datetime(int(m.group(1)), month_map[m.group(2)], int(m.group(3))).date()
-
-    # Patterns like: "15-17 May 2026"
-    m = re.match(r"^(\d{1,2})\s*-\s*\d{1,2}\s+([a-z]+)\s+(\d{4})$", lower)
-    if m and m.group(2) in month_map:
-        return datetime(int(m.group(3)), month_map[m.group(2)], int(m.group(1))).date()
-
-    # Patterns like: "20 March 2026"
-    m = re.match(r"^(\d{1,2})\s+([a-z]+)\s+(\d{4})$", lower)
-    if m and m.group(2) in month_map:
-        return datetime(int(m.group(3)), month_map[m.group(2)], int(m.group(1))).date()
-
-    # Patterns like: "kovo 21" (year missing -> current year)
-    m = re.match(r"^([a-z]+)\s+(\d{1,2})$", lower)
-    if m and m.group(1) in month_map:
-        return datetime(datetime.now().year, month_map[m.group(1)], int(m.group(2))).date()
-
-    # Patterns like: "21 kovo 2026"
-    m = re.match(r"^(\d{1,2})\s+([a-z]+)\s+(\d{4})$", lower)
-    if m and m.group(2) in month_map:
-        return datetime(int(m.group(3)), month_map[m.group(2)], int(m.group(1))).date()
-
-    formats = [
-        "%Y-%m-%d",
-        "%Y/%m/%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%Y.%m.%d",
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(normalized, fmt).date()
-        except ValueError:
-            continue
-
-    return None
-
-
-def _parse_event_time(value):
-    if not value:
-        return None
-    value = str(value).strip()
-    formats = ["%H:%M", "%H:%M:%S"]
-    for fmt in formats:
-        try:
-            return datetime.strptime(value, fmt).time()
-        except ValueError:
-            continue
-    return None
-
-
-def _parse_event_price(value):
-    if value is None:
-        return Decimal("0.00")
-    raw = str(value).strip().replace("EUR", "").replace("€", "").replace(" ", "")
-    raw = raw.replace(",", ".")
-    if raw == "" or raw.lower() == "free":
-        return Decimal("0.00")
-    try:
-        return Decimal(raw).quantize(Decimal("0.01"))
-    except (InvalidOperation, ValueError):
-        return None
 
 
 def _extract_litexpo_event_links(soup, base_url, max_events=20):
@@ -1795,109 +1679,16 @@ def purge_ended_events(request):
 @api_view(["POST"])
 def add_event(request):
     """Create an event from the request payload."""
-    data = request.data
-    name = str(data.get("name") or "").strip()
-    date_raw = data.get("date")
-    time_raw = data.get("time")
-    place = str(data.get("place") or "").strip()
-    price_raw = data.get("price", 0)
-    short_description = str(data.get("short_description") or "").strip()
-    category_names = data.get("categories") or []
-    source_url = str(data.get("source_url") or "").strip() or None
-
-    if not name:
-        return Response(
-            {"error": "Event title must not be empty"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if not date_raw:
-        return Response({"error": "'date' is required (YYYY-MM-DD)."}, status=status.HTTP_400_BAD_REQUEST)
-    if not place:
-        return Response({"error": "'place' is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date_raw).strip()):
-        return Response(
-            {"error": "Event date must be in YYYY-MM-DD format"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    date_value = _parse_event_date(date_raw)
-    if date_value is None:
-        return Response(
-            {"error": "Event date must be in YYYY-MM-DD format"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    time_value = _parse_event_time(time_raw) if time_raw else None
-    if time_raw and time_value is None:
-        return Response(
-            {"error": "Event time must be in HH:mm format"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if time_value is None:
-        time_value = datetime.strptime("00:00", "%H:%M").time()
-
-    price_text = str(price_raw).strip().replace("EUR", "").replace("€", "").replace(" ", "")
-    price_text = price_text.replace(",", ".")
-    if price_text and price_text.lower() != "free":
-        try:
-            parsed_price = Decimal(price_text)
-        except InvalidOperation:
-            parsed_price = None
-        if (
-            parsed_price is None
-            or not parsed_price.is_finite()
-            or parsed_price.as_tuple().exponent < -2
-            or len(parsed_price.as_tuple().digits)
-            + max(parsed_price.as_tuple().exponent, 0)
-            > 10
-        ):
-            return Response(
-                {"error": "Event price must be a decimal number with up to 2 decimal places"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    price_value = _parse_event_price(price_raw)
-    if price_value is None:
-        return Response(
-            {"error": "Event price must be a decimal number with up to 2 decimal places"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if not isinstance(category_names, list):
-        return Response({"error": "'categories' must be a list of strings."}, status=status.HTTP_400_BAD_REQUEST)
-
-    normalized_category_names = []
-    for cat_name in category_names:
-        if not isinstance(cat_name, str):
-            return Response(
-                {"error": "'categories' must be a list of strings."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        cat_name = cat_name.strip()
-        if cat_name:
-            normalized_category_names.append(cat_name)
-
-    if Event.objects.filter(name=name, date=date_value, time=time_value).exists():
+    try:
+        event_data = prepare_event_data(request.data)
+        event = create_event(event_data)
+    except EventPayloadError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    except DuplicateEventError:
         return Response(
             {"error": "Event already exists."},
             status=status.HTTP_409_CONFLICT,
         )
-
-    event_categories = [
-        Category.objects.get_or_create(name=cat_name)[0]
-        for cat_name in normalized_category_names
-    ]
-    event = Event.objects.create(
-        name=name,
-        date=date_value,
-        time=time_value,
-        place=place,
-        price=price_value,
-        short_description=short_description,
-        source_url=source_url,
-    )
-    event.categories.set(event_categories)
 
     return Response(
         {
