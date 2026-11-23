@@ -66,7 +66,7 @@ def test_scrape_events_rejects_invalid_request(client, payload, error):
 def test_scrape_events_reports_http_error(client, monkeypatch):
     error = requests.HTTPError("not found")
     error.response = types.SimpleNamespace(status_code=404)
-    monkeypatch.setattr("hello.views.requests.get", Mock(side_effect=error))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(side_effect=error))
 
     response = _post(client, {"url": "https://example.com"})
 
@@ -78,8 +78,8 @@ def test_scrape_events_reports_http_error(client, monkeypatch):
 def test_scrape_events_retries_timeouts_then_returns_error(client, monkeypatch):
     get = Mock(side_effect=requests.Timeout("timed out"))
     sleep = Mock()
-    monkeypatch.setattr("hello.views.requests.get", get)
-    monkeypatch.setattr("hello.views.time.sleep", sleep)
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", get)
+    monkeypatch.setattr("hello.services.event_scraping.time.sleep", sleep)
 
     response = _post(client, {"url": "https://example.com"})
 
@@ -90,9 +90,32 @@ def test_scrape_events_retries_timeouts_then_returns_error(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scrape_events_retries_timeout_then_continues(client, monkeypatch):
+    get = Mock(
+        side_effect=[
+            requests.Timeout("temporary timeout"),
+            _page_response("<p>Renginiai</p>"),
+        ]
+    )
+    sleep = Mock()
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", get)
+    monkeypatch.setattr("hello.services.event_scraping.time.sleep", sleep)
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Puslapio tekstas"))
+    monkeypatch.setitem(sys.modules, "ollama", _ollama(json.dumps({"events": []})))
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
+
+    response = _post(client, {"url": "https://example.com"})
+
+    assert response.status_code == 200
+    assert get.call_count == 2
+    sleep.assert_called_once_with(1)
+
+
+@pytest.mark.django_db
 def test_scrape_events_reports_other_request_exception(client, monkeypatch):
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(side_effect=requests.RequestException("bad request")),
     )
 
@@ -112,7 +135,7 @@ def test_scrape_events_reports_missing_ollama_package(client, monkeypatch):
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", import_without_ollama)
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
 
     response = _post(client, {"url": "https://example.com"})
 
@@ -124,11 +147,11 @@ def test_scrape_events_reports_missing_ollama_package(client, monkeypatch):
 
 @pytest.mark.django_db
 def test_scrape_events_reports_ollama_and_invalid_json_failures(client, monkeypatch):
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Renginio aprašymas"))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Renginio aprašymas"))
     monkeypatch.setitem(sys.modules, "ollama", _ollama("ne JSON"))
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     monkeypatch.setitem(
         sys.modules,
@@ -147,8 +170,8 @@ def test_scrape_events_reports_ollama_and_invalid_json_failures(client, monkeypa
 
 @pytest.mark.django_db
 def test_scrape_events_extracts_and_saves_events_for_generic_source(client, monkeypatch):
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Puslapio tekstas"))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response("<p>Renginiai</p>")))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Puslapio tekstas"))
     monkeypatch.setitem(
         sys.modules,
         "ollama",
@@ -166,8 +189,8 @@ def test_scrape_events_extracts_and_saves_events_for_generic_source(client, monk
             )
         ),
     )
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(
         client,
@@ -220,13 +243,13 @@ def test_scrape_events_extracts_and_saves_events_for_generic_source(client, monk
 def test_scrape_events_handles_supported_sources(
     client, monkeypatch, url, listing_html, detail_url, expected_source, city
 ):
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response(listing_html)))
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Renginio detalės"))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response(listing_html)))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Renginio detalės"))
     event_place = "Kaunas" if expected_source == "kaveikti" else ""
     chat = _ollama(json.dumps(_event(place=event_place)))
     monkeypatch.setitem(sys.modules, "ollama", chat)
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(client, {"url": url})
 
@@ -245,16 +268,16 @@ def test_scrape_events_uses_saved_links_and_records_detail_failures(client, monk
     detail_url = "https://www.litexpo.lt/en/events/saved-event/"
     EventPageUrl.objects.create(url=detail_url, source="litexpo", city="Kaunas")
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(return_value=_page_response("<p>No links</p>")),
     )
     monkeypatch.setattr(
-        "hello.views._get_clean_page_text",
+        "hello.services.event_scraping._get_clean_page_text",
         Mock(side_effect=[requests.ConnectionError("page unavailable")]),
     )
     monkeypatch.setitem(sys.modules, "ollama", _ollama("{}"))
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(
         client,
@@ -270,7 +293,7 @@ def test_scrape_events_uses_saved_links_and_records_detail_failures(client, monk
 
 @pytest.mark.django_db
 def test_scrape_events_returns_error_when_supported_source_has_no_event_links(client, monkeypatch):
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response("<p>No links</p>")))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response("<p>No links</p>")))
     monkeypatch.setitem(sys.modules, "ollama", _ollama("{}"))
 
     response = _post(client, {"url": "https://www.litexpo.lt/en/events"})
@@ -294,8 +317,8 @@ def test_scrape_events_updates_existing_event_and_handles_detail_model_failures(
     first_url = "https://www.litexpo.lt/en/events/first/"
     second_url = "https://www.litexpo.lt/en/events/second/"
     listing = f'<a href="{first_url}">one</a><a href="{second_url}">two</a>'
-    monkeypatch.setattr("hello.views.requests.get", Mock(return_value=_page_response(listing)))
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Detalės"))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", Mock(return_value=_page_response(listing)))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Detalės"))
     monkeypatch.setitem(
         sys.modules,
         "ollama",
@@ -308,8 +331,8 @@ def test_scrape_events_updates_existing_event_and_handles_detail_model_failures(
             )
         ),
     )
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(client, {"url": "https://www.litexpo.lt/en/events"})
 
@@ -327,14 +350,14 @@ def test_scrape_events_updates_existing_event_and_handles_detail_model_failures(
 def test_scrape_events_handles_detail_ollama_failure_and_meetup_location_payload(client, monkeypatch):
     detail_url = "https://www.meetup.com/group/events/123/"
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(return_value=_page_response(f'<a href="{detail_url}">Event</a>')),
     )
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Detalės"))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Detalės"))
     ollama = types.SimpleNamespace(chat=Mock(side_effect=RuntimeError("down")))
     monkeypatch.setitem(sys.modules, "ollama", ollama)
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(
         client,
@@ -354,13 +377,13 @@ def test_scrape_events_handles_detail_ollama_failure_and_meetup_location_payload
 def test_scrape_events_uses_vilnius_page_text_as_meetup_city(client, monkeypatch):
     detail_url = "https://www.meetup.com/group/events/456/"
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(return_value=_page_response(f"Vilnius <a href='{detail_url}'>Event</a>")),
     )
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Detalės"))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Detalės"))
     monkeypatch.setitem(sys.modules, "ollama", _ollama(json.dumps(_event(place=""))))
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(client, {"url": "https://www.meetup.com/find/events/"})
 
@@ -373,13 +396,13 @@ def test_scrape_events_uses_vilnius_page_text_as_meetup_city(client, monkeypatch
 def test_scrape_events_preserves_explicit_meetup_city(client, monkeypatch):
     detail_url = "https://www.meetup.com/group/events/789/"
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(return_value=_page_response(f'<a href="{detail_url}">Event</a>')),
     )
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Detalės"))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Detalės"))
     monkeypatch.setitem(sys.modules, "ollama", _ollama(json.dumps(_event(place=""))))
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(
         client,
@@ -398,15 +421,68 @@ def test_scrape_events_preserves_explicit_meetup_city(client, monkeypatch):
 def test_scrape_events_keeps_empty_meetup_city_when_no_location_is_available(client, monkeypatch):
     detail_url = "https://www.meetup.com/group/events/101/"
     monkeypatch.setattr(
-        "hello.views.requests.get",
+        "hello.services.event_scraping.requests.get",
         Mock(return_value=_page_response(f'<a href="{detail_url}">Event</a>')),
     )
-    monkeypatch.setattr("hello.views._get_clean_page_text", Mock(return_value="Details"))
+    monkeypatch.setattr("hello.services.event_scraping._get_clean_page_text", Mock(return_value="Details"))
     monkeypatch.setitem(sys.modules, "ollama", _ollama(json.dumps(_event(place="Kaunas"))))
-    monkeypatch.setattr("hello.views.Path.mkdir", Mock())
-    monkeypatch.setattr("hello.views.Path.write_text", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.mkdir", Mock())
+    monkeypatch.setattr("hello.services.event_scraping.Path.write_text", Mock())
 
     response = _post(client, {"url": "https://www.meetup.com/find/events/"})
 
     assert response.status_code == 200
     assert EventPageUrl.objects.get(url=detail_url).city == ""
+
+
+def test_scrape_events_supports_additional_registered_source(monkeypatch):
+    from bs4 import BeautifulSoup
+    from hello.services import event_scraping
+
+    custom_strategy = event_scraping.EventSourceStrategy(
+        name="custom",
+        matches=lambda host, path, query, page_text: host == "events.example",
+        extract_links=lambda soup, url, max_events: ["https://events.example/event/1"],
+        build_prompt=lambda detail_url, detail_text, city: "custom prompt",
+    )
+    monkeypatch.setattr(event_scraping, "EVENT_SOURCE_STRATEGIES", (custom_strategy,))
+    request_data = event_scraping._prepare_scrape_events_request(
+        {"url": "https://events.example/calendar", "max_events": 3}
+    )
+
+    strategy, city, links = event_scraping._discover_event_source(
+        request_data.url,
+        BeautifulSoup("<p>Events</p>", "html.parser"),
+        request_data,
+    )
+
+    assert strategy is custom_strategy
+    assert city == ""
+    assert links == ["https://events.example/event/1"]
+
+
+def test_scrape_events_json_writer_preserves_output_structure(tmp_path):
+    from hello.services.event_scraping import SavedScrapedEvents, _write_scraped_events_json
+
+    results = SavedScrapedEvents(
+        created_count=1,
+        updated_count=0,
+        events=[{"name": "Renginys"}],
+        failed=[{"name": "Kitas", "error": "invalid"}],
+    )
+
+    output_file = _write_scraped_events_json(
+        tmp_path,
+        "https://example.com",
+        "other",
+        "Vilnius",
+        results,
+    )
+
+    assert json.loads(output_file.read_text(encoding="utf-8")) == {
+        "url": "https://example.com",
+        "source": "other",
+        "city": "Vilnius",
+        "events": [{"name": "Renginys"}],
+        "failed": [{"name": "Kitas", "error": "invalid"}],
+    }
