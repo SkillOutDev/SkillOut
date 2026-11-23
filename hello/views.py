@@ -17,11 +17,13 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema
 
 from .models import Category, Student, StudentSubject, Subject
-from .services.scrape_text import (
+from .services import (
     ScrapeTextError,
-    _extract_subject_names_from_ollama_output,
-    _normalize_subject_names,
     process_scrape_text,
+)
+from .services.subject_extractor import (
+    extract_subject_names_from_ollama_output,
+    normalize_subject_names,
 )
 from .services.event_creation import (
     DuplicateEventError,
@@ -947,33 +949,6 @@ def _event_to_json(event):
 
 def _events_to_json(events):
     return [_event_to_json(e) for e in events]
-
-
-def search_events_by_subject_category(subject):
-    """Find events whose categories match the given subject's category.
-
-    Accepts a Subject instance, subject id, or subject name. Returns a list of Event objects.
-    """
-    subject_obj = None
-
-    if isinstance(subject, Subject):
-        subject_obj = subject
-    elif isinstance(subject, int):
-        subject_obj = Subject.objects.filter(id=subject).select_related("category").first()
-    elif isinstance(subject, str):
-        subject_obj = Subject.objects.filter(name__iexact=subject.strip()).select_related("category").first()
-
-    if not subject_obj or not subject_obj.category or not subject_obj.category.name:
-        return []
-
-    category_name = subject_obj.category.name.strip().lower()
-    events = Event.objects.prefetch_related("categories").order_by("-date", "-time")
-
-    return [
-        event
-        for event in events
-        if any((c.name or "").strip().lower() == category_name for c in event.categories.all())
-    ]
 
 
 def _build_student_category_interest_map(student):
