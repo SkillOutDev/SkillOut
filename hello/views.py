@@ -3,7 +3,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 import time
-from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -35,7 +34,12 @@ from .services.event_creation import (
     create_event,
     prepare_event_data,
 )
-from .services.events_search import search_events_by_subject_category
+from .services.event_scraping import (
+    GenericEventModelError,
+    OllamaUnavailableError,
+    ScrapeEventsRequestError,
+    scrape_event_page,
+)
 
 
 class AddStudentRequestSerializer(serializers.Serializer):
@@ -198,202 +202,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.models import User
-from .models import Student, Category, Subject, StudentSubject, Event, EventPageUrl
+from .models import Student, Category, Subject, StudentSubject, Event
 import json
 
 import os
 
-
-def _extract_litexpo_event_links(soup, base_url, max_events=20):
-    links = []
-    seen = set()
-
-    for a_tag in soup.find_all("a", href=True):
-        href = a_tag.get("href", "").strip()
-        full_url = urljoin(base_url, href)
-        parsed = urlparse(full_url)
-        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/") + "/"
-
-        if "/en/events/" not in parsed.path:
-            continue
-        if normalized.endswith("/en/events/"):
-            continue
-        if parsed.netloc != "www.litexpo.lt":
-            continue
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        links.append(normalized)
-
-        if len(links) >= max_events:
-            break
-
-    return links
-
-
-def _extract_meetup_event_links(soup, base_url, max_events=20):
-    links = []
-    seen = set()
-
-    for a_tag in soup.find_all("a", href=True):
-        href = a_tag.get("href", "").strip()
-        full_url = urljoin(base_url, href)
-        parsed = urlparse(full_url)
-        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/") + "/"
-
-        if parsed.netloc not in {"www.meetup.com", "meetup.com"}:
-            continue
-        if "/events/" not in parsed.path:
-            continue
-        if "/find/" in parsed.path or "/topics/" in parsed.path:
-            continue
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        links.append(normalized)
-
-        if len(links) >= max_events:
-            break
-
-    return links
-
-
-def _extract_kaveikti_event_links(soup, base_url, max_events=20):
-    links = []
-    seen = set()
-
-    for a_tag in soup.find_all("a", href=True):
-        href = a_tag.get("href", "").strip()
-        full_url = urljoin(base_url, href)
-        parsed = urlparse(full_url)
-        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/") + "/"
-
-        if parsed.netloc not in {"www.kaveikti.lt", "kaveikti.lt"}:
-            continue
-        if "/renginiai/" in parsed.path and normalized.endswith("/renginiai/"):
-            continue
-        if "rengin" not in parsed.path.lower():
-            continue
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        links.append(normalized)
-
-        if len(links) >= max_events:
-            break
-
-    return links
-
-
-def _build_event_prompt(source, detail_url, detail_text, city=""):
-    if source == "litexpo":
-        return (
-            "Extract ONE event from this Litexpo detail page text and return strict JSON only. "
-            "Output format: "
-            '{"name": "", "date": "YYYY-MM-DD", "time": "HH:MM", "place": "", "price": "", '
-            '"categories": [""], "short_description": ""}. '
-            "Generate categories as topical tags based on the event content from the source page "
-            "(examples: IT, Databases, Biology, Business, Engineering, Construction, Automotive, Art, Gaming). "
-            "Use 2-5 concise categories and avoid generic values like 'Events' or 'Other'. "
-            "If price is not provided, use 0. If place is not explicit, use 'LITEXPO, Vilnius'. "
-            "If time is missing, use 00:00. Do not include markdown or explanation.\n\n"
-            f"Source URL: {detail_url}\n"
-            f"Detail page text:\n{detail_text}"
-        )
-
-    if source == "meetup":
-        city_hint = city or "Vilnius"
-        return (
-            "Extract ONE event from this Meetup event page text and return strict JSON only. "
-            "Output format: "
-            '{"name": "", "date": "YYYY-MM-DD", "time": "HH:MM", "place": "", "price": "", '
-            '"categories": [""], "short_description": ""}. '
-            "Use event location if available, otherwise use city hint. "
-            "If event is free, set price to 0. If time is missing, use 00:00. "
-            "Generate a short_description in 1 sentence based on event topic. "
-            "Do not include markdown or explanation.\n\n"
-            f"City hint: {city_hint}\n"
-            f"Source URL: {detail_url}\n"
-            f"Detail page text:\n{detail_text}"
-        )
-
-    if source == "kaveikti":
-        return (
-            "Extract ONE event from this kaveikti.lt event page text and return strict JSON only. "
-            "Output format: "
-            '{"name": "", "date": "YYYY-MM-DD", "time": "HH:MM", "place": "", "price": "", '
-            '"categories": [""], "short_description": ""}. '
-            "For categories, infer broad tags like Music, Business, Tech, Education, Family, Sports. "
-            "If price is unavailable, set 0. If time is missing, use 00:00. "
-            "Generate short_description from event context. "
-            "Do not include markdown or explanation.\n\n"
-            f"Source URL: {detail_url}\n"
-            f"Detail page text:\n{detail_text}"
-        )
-
-    return (
-        "Extract ONE event from this detail page text and return strict JSON only. "
-        "Output format: "
-        '{"name": "", "date": "YYYY-MM-DD", "time": "HH:MM", "place": "", "price": "", '
-        '"categories": [""], "short_description": ""}. '
-        "If price is not provided, use 0. If time is missing, use 00:00. "
-        "Do not include markdown or explanation.\n\n"
-        f"Source URL: {detail_url}\n"
-        f"Detail page text:\n{detail_text}"
-    )
-
-
-def _save_discovered_event_urls(links, source, city=""):
-    for link in links:
-        EventPageUrl.objects.update_or_create(
-            url=link,
-            defaults={
-                "source": source,
-                "city": city or "",
-                "is_active": True,
-            },
-        )
-
-
-def _load_saved_event_urls(source, city="", max_events=20):
-    qs = EventPageUrl.objects.filter(source=source, is_active=True)
-    if city:
-        qs = qs.filter(city__iexact=city)
-    return list(qs.order_by("-last_seen").values_list("url", flat=True)[:max_events])
-
-
-def _get_clean_page_text(url, timeout=10):
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    for element in soup(["script", "style", "noscript"]):
-        element.extract()
-
-    return soup.get_text(separator=" ", strip=True)[:60000]
-
-
-def _parse_json_from_model_output(raw_content):
-    raw_content = raw_content.strip()
-    if raw_content.startswith("```"):
-        raw_content = raw_content.strip("`")
-        if raw_content.lower().startswith("json"):
-            raw_content = raw_content[4:].strip()
-
-    try:
-        return json.loads(raw_content)
-    except json.JSONDecodeError:
-        start = raw_content.find("{")
-        end = raw_content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(raw_content[start : end + 1])
-            except json.JSONDecodeError:
-                return None
-    return None
 
 # Create your views here.
 
@@ -1055,256 +868,30 @@ def scrape_import_and_assign_subjects(request):
 @api_view(["POST"])
 def scrape_events(request):
     """Scrape events from a web page and store them."""
-    payload = request.data if isinstance(request.data, dict) else {}
-
-    url = (payload.get("url") or "").strip()
-    model_name = (payload.get("model") or "llama3").strip()
-    max_events = payload.get("max_events", 20)
-    city = (payload.get("city") or "").strip()
-
     try:
-        max_events = int(max_events)
-    except (TypeError, ValueError):
-        return Response({"error": "max_events must be a number."}, status=status.HTTP_400_BAD_REQUEST)
-    if max_events < 1:
-        return Response({"error": "max_events must be at least 1."}, status=status.HTTP_400_BAD_REQUEST)
-    if not url:
-        return Response({"error": "Field 'url' is required."}, status=status.HTTP_400_BAD_REQUEST)
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return Response({"error": "URL must start with http:// or https://."}, status=status.HTTP_400_BAD_REQUEST)
-
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            break
-        except requests.HTTPError as e:
-            return Response({"error": f"HTTP error: {e.response.status_code}"}, status=status.HTTP_400_BAD_REQUEST)
-        except (requests.Timeout, requests.ConnectionError) as e:
-            if attempt == max_retries - 1:
-                return Response({"error": f"Failed after {max_retries} attempts: {e}"}, status=status.HTTP_400_BAD_REQUEST)
-            time.sleep(1)
-        except requests.RequestException as e:
-            return Response({"error": f"Request failed: {e}"}, status=status.HTTP_400_BAD_REQUEST)
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    output_dir = Path(settings.BASE_DIR) / "scraped_text"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        import ollama
-    except ImportError:
+        result = scrape_event_page(request.data)
+    except ScrapeEventsRequestError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    except OllamaUnavailableError as exc:
         return Response(
-            {"error": "Ollama Python package is not installed. Install it with: pip install ollama"},
+            {"error": str(exc)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-
-    parsed = {"events": []}
-    failed_events = []
-
-    source = "other"
-    parsed_url = urlparse(url)
-    host = parsed_url.netloc.lower()
-    path = parsed_url.path.lower()
-    query = parsed_url.query.lower()
-    page_text = soup.get_text(" ", strip=True).lower()
-
-    if "litexpo.lt" in host and "/en/events" in path:
-        source = "litexpo"
-        event_links = _extract_litexpo_event_links(soup, url, max_events=max_events)
-    elif "meetup.com" in host and (
-        "/find/" in path
-        or "/events/" in path
-        or "vilnius" in query
-        or "vilnius" in page_text
-        or "events" in page_text
-    ):
-        source = "meetup"
-        event_links = _extract_meetup_event_links(soup, url, max_events=max_events)
-        if not city:
-            location_param = payload.get("location") or ""
-            if location_param:
-                city = str(location_param).split("--")[-1]
-            elif "location=" in parsed_url.query:
-                for part in parsed_url.query.split("&"):
-                    if part.startswith("location="):
-                        city = part.split("=", 1)[-1].split("--")[-1]
-                        break
-            elif "vilnius" in query or "vilnius" in page_text:
-                city = "Vilnius"
-    elif "kaveikti.lt" in host and "/renginiai" in path:
-        source = "kaveikti"
-        event_links = _extract_kaveikti_event_links(soup, url, max_events=max_events)
-    else:
-        event_links = []
-
-    if source in {"litexpo", "meetup", "kaveikti"}:
-        if event_links:
-            _save_discovered_event_urls(event_links, source=source, city=city)
-        else:
-            event_links = _load_saved_event_urls(source=source, city=city, max_events=max_events)
-
-        if not event_links:
-            return Response(
-                {"error": f"No event links found for source '{source}' and no saved links are available."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        for detail_url in event_links:
-            try:
-                detail_text = _get_clean_page_text(detail_url)
-            except Exception as exc:
-                failed_events.append({"source_url": detail_url, "error": f"Failed to open detail page: {exc}"})
-                continue
-
-            prompt = _build_event_prompt(source=source, detail_url=detail_url, detail_text=detail_text, city=city)
-
-            try:
-                ollama_response = ollama.chat(
-                    model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-            except Exception as exc:
-                failed_events.append({"source_url": detail_url, "error": f"Ollama request failed: {exc}"})
-                continue
-
-            model_payload = _parse_json_from_model_output(
-                ollama_response.get("message", {}).get("content", "")
-            )
-            if not isinstance(model_payload, dict):
-                failed_events.append({"source_url": detail_url, "error": "Could not parse model JSON output."})
-                continue
-
-            model_payload["source_url"] = detail_url
-            parsed["events"].append(model_payload)
-
-            EventPageUrl.objects.filter(url=detail_url).update(last_scraped=timezone.now())
-    else:
-        text = _get_clean_page_text(url)
-        prompt = (
-            "Extract events from the webpage text and return strict JSON only. "
-            "Output format: "
-            '{"events": [{"name": "", "date": "YYYY-MM-DD", "time": "HH:MM", "place": "", "price": "", '
-            '"categories": [""], "short_description": ""}]}. '
-            "If price is not provided, use 0. If time is missing, use 00:00. "
-            "Do not include markdown or extra explanation.\n\n"
-            f"Webpage text:\n{text}"
+    except GenericEventModelError as exc:
+        return Response(
+            {"error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-
-        try:
-            ollama_response = ollama.chat(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-            )
-        except Exception as exc:
-            return Response({"error": f"Ollama request failed: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        parsed = _parse_json_from_model_output(ollama_response.get("message", {}).get("content", ""))
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("events"), list):
-            return Response({"error": "Could not parse events JSON from model output."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    created_events = 0
-    updated_events = 0
-    saved_events = []
-
-    for item in parsed["events"]:
-        if not isinstance(item, dict):
-            continue
-
-        name = str(item.get("name", "")).strip()
-        date_value = _parse_event_date(item.get("date"))
-        time_value = _parse_event_time(item.get("time"))
-        place = str(item.get("place", "")).strip()
-        price_value = _parse_event_price(item.get("price"))
-        short_description = str(item.get("short_description", "")).strip()
-        categories = item.get("categories") if isinstance(item.get("categories"), list) else []
-
-        if not time_value:
-            time_value = datetime.strptime("00:00", "%H:%M").time()
-        if not place:
-            if source == "litexpo":
-                place = "LITEXPO, Vilnius"
-            elif source == "meetup" and city:
-                place = city
-            else:
-                place = ""
-
-        if not name or not date_value or not place or price_value is None:
-            failed_events.append(
-                {
-                    "name": name,
-                    "error": "Missing or invalid required fields (name, date, time, place, price).",
-                    "raw": item,
-                }
-            )
-            continue
-
-        event, created = Event.objects.update_or_create(
-            name=name,
-            date=date_value,
-            defaults={
-                "time": time_value,
-                "place": place,
-                "price": price_value,
-                "short_description": short_description or f"Event: {name}",
-                "source_url": item.get("source_url") or "",
-            },
-        )
-
-        event_categories = []
-        for category_name in categories:
-            cat_name = str(category_name).strip()
-            if not cat_name:
-                continue
-            category, _ = Category.objects.get_or_create(name=cat_name)
-            event_categories.append(category)
-
-        if event_categories:
-            event.categories.set(event_categories)
-
-        if created:
-            created_events += 1
-        else:
-            updated_events += 1
-
-        saved_events.append(
-            {
-                "event_id": event.id,
-                "name": event.name,
-                "date": str(event.date),
-                "time": event.time.strftime("%H:%M"),
-                "place": event.place,
-                "price": str(event.price),
-                "categories": [c.name for c in event.categories.all()],
-                "short_description": event.short_description,
-                "source_url": event.source_url,
-            }
-        )
-
-    events_output = {
-        "url": url,
-        "source": source,
-        "city": city,
-        "events": saved_events,
-        "failed": failed_events,
-    }
-    json_output_file = output_dir / "latest_events.json"
-    json_output_file.write_text(
-        json.dumps(events_output, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
 
     return Response(
         {
             "message": "Event scrape and extraction completed.",
-            "json_file": str(json_output_file.relative_to(settings.BASE_DIR)),
-            "created_events": created_events,
-            "updated_events": updated_events,
-            "failed_count": len(failed_events),
-            "events": saved_events,
-            "failed": failed_events,
+            "json_file": str(result.json_output_file.relative_to(settings.BASE_DIR)),
+            "created_events": result.created_count,
+            "updated_events": result.updated_count,
+            "failed_count": len(result.failed),
+            "events": result.events,
+            "failed": result.failed,
         },
         status=status.HTTP_200_OK,
     )
