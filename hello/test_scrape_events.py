@@ -486,3 +486,86 @@ def test_scrape_events_json_writer_preserves_output_structure(tmp_path):
         "events": [{"name": "Renginys"}],
         "failed": [{"name": "Kitas", "error": "invalid"}],
     }
+
+
+@pytest.mark.parametrize(
+    "extractor,base_url,html,expected",
+    [
+        (
+            "_extract_litexpo_event_links",
+            "https://www.litexpo.lt/en/events/",
+            '<a href="/en/events/">index</a>'
+            '<a href="/en/events/first/?ref=one">first</a>'
+            '<a href="/en/events/first/#info">duplicate</a>'
+            '<a href="https://other.example/en/events/other/">other</a>'
+            '<a href="/en/events/second/">second</a>',
+            [
+                "https://www.litexpo.lt/en/events/first/",
+                "https://www.litexpo.lt/en/events/second/",
+            ],
+        ),
+        (
+            "_extract_meetup_event_links",
+            "https://www.meetup.com/find/events/",
+            '<a href="/find/events/">find</a>'
+            '<a href="/topics/events/">topics</a>'
+            '<a href="/group/events/123?ref=one">first</a>'
+            '<a href="/group/events/123/#info">duplicate</a>'
+            '<a href="https://other.example/group/events/999/">other</a>'
+            '<a href="/group/events/456/">second</a>',
+            [
+                "https://www.meetup.com/group/events/123/",
+                "https://www.meetup.com/group/events/456/",
+            ],
+        ),
+        (
+            "_extract_kaveikti_event_links",
+            "https://kaveikti.lt/renginiai/",
+            '<a href="/renginiai/">index</a>'
+            '<a href="/renginiai/first?ref=one">first</a>'
+            '<a href="/renginiai/first/#info">duplicate</a>'
+            '<a href="https://other.example/renginiai/other/">other</a>'
+            '<a href="/renginiai/second/">second</a>',
+            [
+                "https://kaveikti.lt/renginiai/first/",
+                "https://kaveikti.lt/renginiai/second/",
+            ],
+        ),
+    ],
+)
+def test_event_link_extractors_filter_normalize_and_limit(extractor, base_url, html, expected):
+    from bs4 import BeautifulSoup
+    from hello.services import event_scraping
+
+    extract = getattr(event_scraping, extractor)
+    assert extract(BeautifulSoup(html, "html.parser"), base_url, 1) == expected[:1]
+    assert extract(BeautifulSoup(html, "html.parser"), base_url, 10) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ('{"name": "Concert"}', {"name": "Concert"}),
+        ('```json\n{"name": "Concert"}\n```', {"name": "Concert"}),
+        ('Here is the event: {"name": "Concert"}', {"name": "Concert"}),
+        ("text {invalid}", None),
+        ("not json", None),
+    ],
+)
+def test_parse_json_from_model_output(raw, expected):
+    from hello.services.event_scraping import _parse_json_from_model_output
+
+    assert _parse_json_from_model_output(raw) == expected
+
+
+def test_get_clean_page_text_removes_noncontent_elements(monkeypatch):
+    from hello.services.event_scraping import _get_clean_page_text
+
+    get = Mock(return_value=_page_response(
+        "<h1>Concert</h1><script>hidden</script><style>hidden</style>"
+        "<noscript>hidden</noscript><p>Vilnius</p>"
+    ))
+    monkeypatch.setattr("hello.services.event_scraping.requests.get", get)
+
+    assert _get_clean_page_text("https://example.com/event", timeout=4) == "Concert Vilnius"
+    get.assert_called_once_with("https://example.com/event", timeout=4)
